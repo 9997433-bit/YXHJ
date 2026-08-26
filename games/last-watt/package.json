@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "selfcheck": "vite build --ssr src/vfx/selfcheck.run.ts --outDir .selfcheck --logLevel warn && node .selfcheck/selfcheck.run.js",
     "selfcheck:audio": "vite build --ssr src/audio/selfcheck.run.ts --outDir .selfcheck/audio --logLevel warn && node .selfcheck/audio/selfcheck.run.js",
-    "probe:shatter": "node src/vfx/demo/readability.probe.mjs"
+    "probe:shatter": "node src/vfx/demo/readability.probe.mjs",
+    "probe:sfx": "node src/audio/demo/sfx.probe.mjs",
+    "probe:slice-audio": "node src/audio/demo/slice.probe.mjs"
   },
   "dependencies": {
     "three": "^0.185.1"

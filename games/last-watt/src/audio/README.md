@@ -85,8 +85,9 @@ const bridge = connectGameAudio({
 ## 验证
 
 ```bash
-npm run selfcheck:audio   # 无头自检：9 项，不需要声卡，可进 CI
-node src/audio/demo/sfx.probe.mjs   # 离线渲染真波形，需要 Chrome
+npm run selfcheck:audio     # 无头自检：9 项，不需要声卡，可进 CI
+npm run probe:sfx           # 离线渲染真波形并判读，需要 Chrome
+npm run probe:slice-audio   # 真浏览器开一局真游戏，7 项，需要 Chrome
 ```
 
 替身自检只能证明「节点搭出来了」，证不了「合成器接受这张图」——一个非法的
@@ -105,6 +106,12 @@ sfx_wave_start     峰值 0.138  RMS 0.0203  时长 0.41s  重心  117Hz
 且比开波亮 3 倍以上；四条都出声、都不削波、都留足响度（峰值 > 0.12）。
 每条同时给「裸 / 仅增益 / 过总线」三个峰值，一眼分得清「音色写轻了」
 还是「总线压过头了」——上面那张压限器表就是这么读出来的。
+
+上面两层仍然绕开了 `src/main.ts` 那几行组装代码：传错一个对象、
+`AudioEngine` 在真页面上构造失败，它们照样全绿。所以第三页
+（`demo/slice.probe.mjs`）用 CDP 在真浏览器里开一局真游戏：真手势解锁、
+数字键选图纸 + 真点棋盘放一座塔、空格开波、`M` 静音，逐条对着
+`window.__lastWattGame.audio.diagnostics` 验，外加页面零报错。
 
 ## 已知边界
 
