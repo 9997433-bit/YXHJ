@@ -86,7 +86,7 @@ export class Hud {
   }
 
   /** combo 首次触发时调用；已见过会被静默忽略（GDD 14.2：每档案只弹一次）。 */
-  showComboTip(combo: ComboId): boolean {
+  showComboTip(combo: ComboId | string): boolean {
     return this.toast.showCombo(combo);
   }
 

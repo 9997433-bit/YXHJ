@@ -9,13 +9,20 @@ import { COLORS, hexToCss } from '../theme';
  * 本组件不自己决定什么叫「见过」。
  */
 
-export type ComboId = 'ice-shatter' | 'oil-fire' | 'conduct' | 'overload';
+/** 规范 combo id：`data/reactions.json` 的 `combo` 字段（Round 2 拍板第 3 条）。 */
+export type ComboId = 'shatter' | 'oil_fire' | 'conduct' | 'overload';
 
 const COMBO_TIPS: Record<ComboId, { text: string; color: string }> = {
-  'ice-shatter': { text: '碎裂！冻结的敌人怕重击', color: COLORS.ice },
-  'oil-fire': { text: '点燃！沾油的敌人怕火', color: COLORS.fire },
+  shatter: { text: '碎裂！冻结的敌人怕重击', color: COLORS.ice },
+  oil_fire: { text: '点燃！沾油的敌人怕火', color: COLORS.fire },
   conduct: { text: '导电！湿的敌人会把电传下去', color: COLORS.electric },
   overload: { text: '超载！攻速翻倍，之后会跳闸停机', color: COLORS.electric },
+};
+
+/** Round 1 期 UI 自造的旧名。调用方改完即可删，别在这里长第三套名字。 */
+const COMBO_ALIASES: Record<string, ComboId> = {
+  'ice-shatter': 'shatter',
+  'oil-fire': 'oil_fire',
 };
 
 export class ComboToast {
@@ -35,11 +42,17 @@ export class ComboToast {
     this.root.hidden = true;
   }
 
-  /** @returns 是否真的弹了（已见过则返回 false） */
-  showCombo(combo: ComboId, durationMs = 3000): boolean {
-    if (this.seen.has(combo)) return false;
-    this.seen.add(combo);
-    const tip = COMBO_TIPS[combo];
+  /**
+   * @param combo 规范 combo id；旧的 kebab 名也认
+   * @returns 是否真的弹了（已见过、或 id 不认识则返回 false）
+   */
+  showCombo(combo: ComboId | string, durationMs = 3000): boolean {
+    const id = COMBO_ALIASES[combo] ?? (combo as ComboId);
+    const tip = COMBO_TIPS[id];
+    // 认不出来的 combo 静默丢掉：提示条是教学件，不该替战斗层报错
+    if (!tip) return false;
+    if (this.seen.has(id)) return false;
+    this.seen.add(id);
     this.show(tip.text, tip.color, durationMs);
     return true;
   }
