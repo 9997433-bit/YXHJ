@@ -35,7 +35,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          source=$(gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null || echo none)
+          # gh prints the 404 body on stdout, so read build_type only on success.
+          source=none
+          if found=$(gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null); then
+            source=$found
+          fi
           echo "source=$source" >> "$GITHUB_OUTPUT"
           echo "Pages build_type: $source"
 
