@@ -287,10 +287,14 @@ export class Game {
 
   private resultLine(status: 'lost' | 'won'): string {
     const snapshot = this.session.snapshot();
-    const wave = `第 ${snapshot.wave.current} / ${snapshot.wave.total} 波`;
-    return status === 'won'
-      ? `${wave} · 完整度 ${Math.round(snapshot.integrity.value)}`
-      : `${wave} · 核心完整度归零`;
+    if (status === 'won') {
+      return `${snapshot.wave.total} 波全清 · 完整度 ${Math.round(snapshot.integrity.value)}`;
+    }
+    // Wave 0 is a real state — the core can be lost before anything is called —
+    // and printing「第 0 波」for it looks like a bug rather than a result.
+    return snapshot.wave.current === 0
+      ? '开波前核心完整度已归零'
+      : `第 ${snapshot.wave.current} / ${snapshot.wave.total} 波 · 核心完整度归零`;
   }
 
   /** Gate-to-core routes, redrawn only when a dig or a breach moves the field. */
