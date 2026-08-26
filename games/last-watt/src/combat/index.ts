@@ -5,9 +5,13 @@
  * inside the module.
  *
  *   const combat = new CombatSystem({ terrain, movement, power });
- *   combat.buildTower('hydraulic_hammer', { cx: 4, cy: 6 });
- *   combat.spawnEnemy('armored_hauler', { position, path });
+ *   combat.buildTower('hydraulic_breaker', { cx: 4, cy: 6 });
+ *   combat.spawnEnemy('armored_truck', { position, path });
  *   combat.update(dt);
+ *
+ * Content ids are the primary keys from `games/last-watt/data/*.json`. The
+ * presentation layer should bind to the three stable signals in
+ * `vfxSignals.ts` rather than to reaction row ids.
  */
 
 export { CombatSystem, type CombatSystemOptions } from './combatSystem';
@@ -77,14 +81,36 @@ export {
   ContentRegistry,
   DEFAULT_CONTENT,
   ENEMY_DEFS,
+  ENEMY_IDS,
+  ENEMY_PHASE_IDS,
+  LEGACY_ENEMY_IDS,
+  LEGACY_TOWER_IDS,
+  LEGACY_UPGRADE_IDS,
   PALETTE,
   REACTION_PARAMS,
   REACTION_TABLE,
   STATUS_DEFS,
   TOWER_DEFS,
+  TOWER_IDS,
   UPGRADE_DEFS,
+  UPGRADE_IDS,
+  isLegacyId,
+  resolveEnemyId,
+  resolveTowerId,
+  resolveUpgradeId,
   type CombatContent,
 } from './data';
+
+export {
+  COMBAT_VFX_SIGNALS,
+  VERB_EMITTED_SIGNALS,
+  type CombatVfxSignalMap,
+  type FrozenSignal,
+  type IceShatterSignal,
+  type OverloadSignal,
+  type OverloadedTower,
+  type SignalEndReason,
+} from './vfxSignals';
 
 export {
   acquireTarget,
@@ -94,4 +120,10 @@ export {
 } from './targeting';
 
 export * from './types';
-export { createIceShatterScenario, runIceShatterProbe, type ShatterProbeReport } from './scenarios';
+export {
+  createIceShatterScenario,
+  runIceShatterProbe,
+  runOverloadProbe,
+  type OverloadProbeReport,
+  type ShatterProbeReport,
+} from './scenarios';

@@ -72,20 +72,30 @@ import {
   clamp,
   distance,
   toCell,
+  unitVector,
   type CellCoating,
   type CellCoord,
   type ComboId,
   type EntityId,
   type Seconds,
   type StatusId,
+  type StatusVfxSignal,
   type Vec2,
 } from './types';
+import type { OverloadedTower, OverloadSignal, SignalEndReason } from './vfxSignals';
 
 /** Damage-over-time resolves in discrete ticks so floaters stay readable. */
 const DOT_TICK: Seconds = 0.5;
 /** A rivet with no valid target left is dropped after this long. */
 const PROJECTILE_MAX_AGE: Seconds = 3;
 const EMPTY_PARAMS: Readonly<Record<string, number>> = Object.freeze({});
+const ZERO_VEC: Readonly<Vec2> = Object.freeze({ x: 0, y: 0 });
+
+/** An overload window in flight, so the `overload` signal can be closed. */
+interface OverloadSurge {
+  remaining: Seconds;
+  begin: OverloadSignal;
+}
 
 export interface CombatSystemOptions {
   content?: CombatContent;
@@ -113,6 +123,7 @@ export class CombatSystem implements ReactionRuntime {
   private nextId: EntityId = 1;
   private readonly seenCombos = new Set<ComboId>();
   private readonly removalQueue: Enemy[] = [];
+  private overloadSurges: OverloadSurge[] = [];
 
   constructor(options: CombatSystemOptions = {}) {
     this.content = new ContentRegistry(options.content);
@@ -151,6 +162,10 @@ export class CombatSystem implements ReactionRuntime {
     return this.towers.get(id);
   }
 
+  /**
+   * `defId` is a `data/enemies.json` id. Round 1's combat-private names still
+   * resolve through `data/ids.ts`, but every id emitted from here is canonical.
+   */
   spawnEnemy(defId: string, options: EnemySpawnOptions): Enemy {
     const def = this.content.enemy(defId);
     const enemy = new Enemy(this.nextId++, def, this.content.statuses, options);
@@ -166,20 +181,22 @@ export class CombatSystem implements ReactionRuntime {
     return enemy;
   }
 
+  /** `defId` is a `data/towers.json` id; Round 1 aliases still resolve. */
   buildTower(defId: string, cell: CellCoord): Tower {
     const def = this.content.tower(defId);
     const tower = new Tower(this.nextId++, def, cell);
     tower.powered = this.terrain.isPowered(cell.cx, cell.cy);
     this.towers.set(tower.id, tower);
-    this.bus.emit('tower_built', { towerId: tower.id, defId, cell: { ...tower.position } });
+    this.bus.emit('tower_built', { towerId: tower.id, defId: def.id, cell: { ...tower.position } });
     return tower;
   }
 
   upgradeTower(towerId: EntityId, upgradeId: string): boolean {
     const tower = this.towers.get(towerId);
     if (!tower || tower.upgradeId) return false;
-    tower.applyUpgrade(this.content.upgrade(upgradeId));
-    this.bus.emit('tower_upgraded', { towerId, defId: tower.defId, upgradeId });
+    const upgrade = this.content.upgrade(upgradeId);
+    tower.applyUpgrade(upgrade);
+    this.bus.emit('tower_upgraded', { towerId, defId: tower.defId, upgradeId: upgrade.id });
     return true;
   }
 
@@ -208,6 +225,7 @@ export class CombatSystem implements ReactionRuntime {
   }
 
   removeEnemy(enemy: Enemy): void {
+    this.endEnemySignals(enemy);
     enemy.alive = false;
     this.enemies.delete(enemy.id);
   }
@@ -219,6 +237,7 @@ export class CombatSystem implements ReactionRuntime {
     this.coatings.clear();
     this.stats.reset();
     this.seenCombos.clear();
+    this.overloadSurges = [];
     this.time = 0;
   }
 
@@ -242,7 +261,28 @@ export class CombatSystem implements ReactionRuntime {
     for (const enemy of this.enemies.values()) this.updateEnemy(enemy, dt);
     for (const tower of this.towers.values()) this.updateTower(tower, dt);
     this.updateProjectiles(dt);
+    this.updateOverloadSurges(dt);
     this.flushRemovals();
+  }
+
+  /** Closes the `overload` VFX signal once its window has run out. */
+  private updateOverloadSurges(dt: Seconds): void {
+    if (this.overloadSurges.length === 0) return;
+    const survivors: OverloadSurge[] = [];
+    for (const surge of this.overloadSurges) {
+      surge.remaining -= dt;
+      if (surge.remaining > 0) {
+        survivors.push(surge);
+        continue;
+      }
+      this.bus.emit('overload', {
+        ...surge.begin,
+        phase: 'end',
+        duration: 0,
+        endReason: 'expired',
+      });
+    }
+    this.overloadSurges = survivors;
   }
 
   private flushRemovals(): void {
@@ -414,6 +454,7 @@ export class CombatSystem implements ReactionRuntime {
         duration: disableSeconds,
       });
     }
+    this.endEnemySignals(enemy);
     enemy.alive = false;
     this.bus.emit('enemy_killed', {
       enemyId: enemy.id,
@@ -425,6 +466,7 @@ export class CombatSystem implements ReactionRuntime {
   }
 
   private leak(enemy: Enemy): void {
+    this.endEnemySignals(enemy);
     enemy.alive = false;
     this.stats.enemiesLeaked += 1;
     this.bus.emit('enemy_leaked', {
@@ -439,6 +481,7 @@ export class CombatSystem implements ReactionRuntime {
   }
 
   private kill(enemy: Enemy, source: AttackSource, combo: ComboId | undefined): void {
+    this.endEnemySignals(enemy);
     enemy.alive = false;
     enemy.hp = 0;
     this.stats.enemiesKilled += 1;
@@ -999,6 +1042,8 @@ export class CombatSystem implements ReactionRuntime {
         ...(ctx.source.id !== undefined ? { sourceId: ctx.source.id } : {}),
       });
 
+      if (row.impact?.signal) this.emitRowSignal(row, ctx, position);
+
       // GDD §14.2: the tip bar for a combo fires exactly once per session.
       if (row.combo && !this.seenCombos.has(row.combo)) {
         this.seenCombos.add(row.combo);
@@ -1010,6 +1055,28 @@ export class CombatSystem implements ReactionRuntime {
       }
     }
     return fired;
+  }
+
+  /**
+   * Publishes the stable one-shot signal a row declares. Everything in the
+   * payload is read off the row and the context, so the shatter burst follows
+   * `impact.signal` rather than the row being called `ice_shatter`.
+   */
+  private emitRowSignal(row: ReactionRow, ctx: ReactionContext, position: Vec2): void {
+    const signal = row.impact?.signal;
+    if (!signal) return;
+    const splash = row.effects.find((effect) => effect.kind === 'splash');
+    const attacker = ctx.source.id !== undefined ? this.towers.get(ctx.source.id) : undefined;
+
+    this.bus.emit(signal, {
+      position,
+      splashRadius: splash?.kind === 'splash' ? splash.radius : 0,
+      direction: attacker ? unitVector(attacker.position, position) : { ...ZERO_VEC },
+      damage: ctx.hit?.amount ?? 0,
+      impact: row.impact ?? {},
+      ...(ctx.target ? { enemyId: ctx.target.id } : {}),
+      ...(ctx.source.id !== undefined ? { sourceId: ctx.source.id } : {}),
+    });
   }
 
   /** Runs a bare effect list (a status's `onEnd`) outside of any row. */
@@ -1044,6 +1111,17 @@ export class CombatSystem implements ReactionRuntime {
       refreshed: result.refreshed && !result.applied,
     });
 
+    const signal = this.content.statuses.get(status).signal;
+    if (signal) {
+      this.bus.emit(signal, {
+        phase: 'begin',
+        enemyId: enemy.id,
+        position: { ...enemy.position },
+        radius: enemy.radius,
+        duration: result.duration,
+      });
+    }
+
     const instance = enemy.statuses.get(status);
     this.trigger({
       trigger: 'on_status_changed',
@@ -1066,6 +1144,7 @@ export class CombatSystem implements ReactionRuntime {
       status: removal.status,
       reason: removal.reason,
     });
+    if (removal.def.signal) this.endStatusSignal(enemy, removal.def.signal, removal.reason);
     if (!removal.def.onEnd || !enemy.alive) return;
     this.runEffects(removal.def.onEnd, {
       trigger: 'on_status_changed',
@@ -1074,6 +1153,28 @@ export class CombatSystem implements ReactionRuntime {
       sourceTags: [],
       params: EMPTY_PARAMS,
     });
+  }
+
+  private endStatusSignal(enemy: Enemy, signal: StatusVfxSignal, reason: SignalEndReason): void {
+    this.bus.emit(signal, {
+      phase: 'end',
+      enemyId: enemy.id,
+      position: { ...enemy.position },
+      radius: enemy.radius,
+      duration: 0,
+      endReason: reason,
+    });
+  }
+
+  /**
+   * Closes every open per-enemy signal when the host leaves the field, so the
+   * VFX layer never keeps a looping emitter alive on a corpse.
+   */
+  private endEnemySignals(enemy: Enemy): void {
+    for (const instance of enemy.statuses.list()) {
+      const signal = this.content.statuses.get(instance.id).signal;
+      if (signal) this.endStatusSignal(enemy, signal, 'host_removed');
+    }
   }
 
   paintCells(
@@ -1106,7 +1207,7 @@ export class CombatSystem implements ReactionRuntime {
     overheat: Seconds;
     poweredTowersOnly: boolean;
   }): number {
-    let affected = 0;
+    const affected: OverloadedTower[] = [];
     for (const tower of this.towers.values()) {
       if (options.poweredTowersOnly && !tower.drawsPower) continue;
       if (!tower.powered) continue;
@@ -1121,7 +1222,7 @@ export class CombatSystem implements ReactionRuntime {
         if (chebyshev > options.radius) continue;
       }
       tower.overload(options.attackSpeedMul, options.duration, options.overheat);
-      affected += 1;
+      affected.push({ towerId: tower.id, defId: tower.defId, position: { ...tower.position } });
       this.bus.emit('tower_state_changed', {
         towerId: tower.id,
         defId: tower.defId,
@@ -1129,7 +1230,33 @@ export class CombatSystem implements ReactionRuntime {
         duration: options.duration,
       });
     }
-    return affected;
+
+    this.openOverloadSurge(options, affected);
+    return affected.length;
+  }
+
+  /**
+   * Publishes the `overload` signal for the surge that just landed and arms
+   * its closing edge. Driven by the effect verb rather than by a row id, so
+   * the capacitor and the §9 ultimate both light up without a branch.
+   */
+  private openOverloadSurge(
+    options: { scope: 'radius' | 'global'; origin?: CellCoord; radius: number; duration: Seconds; overheat: Seconds },
+    towers: OverloadedTower[],
+  ): void {
+    const begin: OverloadSignal = {
+      phase: 'begin',
+      scope: options.scope,
+      radiusCells: options.scope === 'radius' ? options.radius : 0,
+      towers,
+      duration: options.duration,
+      overheat: options.overheat,
+      ...(options.scope === 'radius' && options.origin
+        ? { origin: cellCenter(options.origin.cx, options.origin.cy) }
+        : {}),
+    };
+    this.bus.emit('overload', begin);
+    if (options.duration > 0) this.overloadSurges.push({ remaining: options.duration, begin });
   }
 
   stunEnemies(options: {

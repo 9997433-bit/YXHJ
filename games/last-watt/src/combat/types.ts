@@ -115,11 +115,29 @@ export type TargetStrategy = 'first' | 'strongest' | 'air';
 // ---------------------------------------------------------------------------
 
 /**
+ * The fixed set of names `src/vfx` binds to. Payloads and the rules about who
+ * may declare each one live in `vfxSignals.ts`.
+ */
+export type CombatVfxSignal = 'ice_shatter' | 'frozen' | 'overload';
+
+/** The subset a reaction row may declare: one-shot bursts at a position. */
+export type ReactionVfxSignal = Extract<CombatVfxSignal, 'ice_shatter'>;
+
+/** The subset a status may declare: per-enemy effects with a begin and an end. */
+export type StatusVfxSignal = Extract<CombatVfxSignal, 'frozen'>;
+
+/**
  * Screen-impact budget carried on reaction rows. The VFX layer owns the
  * throttling rules from GDD §15.2 ("at most one hitstop per 100ms"); combat
  * only declares intent.
  */
 export interface ImpactSpec {
+  /**
+   * Stable VFX signal this row publishes on top of `reaction_triggered`, so
+   * `src/vfx` can bind to a fixed name instead of to a reaction row id. See
+   * `vfxSignals.ts`.
+   */
+  signal?: ReactionVfxSignal;
   /** VFX Graph / particle effect id, see GDD §15.2 particle language table. */
   vfx?: string;
   /** Audio event id, see GDD §16.2. */
@@ -142,6 +160,14 @@ export function distance(a: Vec2, b: Vec2): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+/** Direction from `from` to `to`, normalised; zero when the two coincide. */
+export function unitVector(from: Vec2, to: Vec2): Vec2 {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  return length > 1e-6 ? { x: dx / length, y: dy / length } : { x: 0, y: 0 };
 }
 
 export function toCell(p: Vec2): CellCoord {

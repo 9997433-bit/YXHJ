@@ -1,17 +1,22 @@
 /**
  * Enemy table (GDD §8.1) including the two bosses of §8.2.
  *
+ * Ids and phase ids are the primary keys from
+ * `games/last-watt/data/enemies.json`; the Round 1 combat-private names live on
+ * in `ids.ts` as read-only aliases only.
+ *
  * `flags` are the hook the reaction table matches on: the Leviathan's
  * `armor_plated` flag is what lets a shatter knock its plates off without the
  * reaction table ever naming the Leviathan.
  */
 
 import type { EnemyDef } from '../entities/enemyDef';
+import { ENEMY_IDS, ENEMY_PHASE_IDS } from './ids';
 import { SAPPER_TOWER_DISABLE_SECONDS } from './tuning';
 
 export const ENEMY_DEFS: readonly EnemyDef[] = [
   {
-    id: 'scavenger_bug',
+    id: ENEMY_IDS.scavengerBug,
     displayName: '拾荒虫',
     hp: 30,
     speed: 1.0,
@@ -27,7 +32,7 @@ export const ENEMY_DEFS: readonly EnemyDef[] = [
     note: 'GDD §8.1 — the baseline. Wave 1 is eight of these and must be won.',
   },
   {
-    id: 'scurry_rats',
+    id: ENEMY_IDS.swiftRat,
     displayName: '疾行鼠群',
     hp: 20,
     speed: 1.8,
@@ -43,7 +48,7 @@ export const ENEMY_DEFS: readonly EnemyDef[] = [
     note: 'GDD §11 wave 2 — machine guns alone must leak a few of these.',
   },
   {
-    id: 'armored_hauler',
+    id: ENEMY_IDS.armoredTruck,
     displayName: '装甲运输车',
     hp: 220,
     speed: 0.6,
@@ -59,7 +64,7 @@ export const ENEMY_DEFS: readonly EnemyDef[] = [
     note: 'GDD §8.1 — -5 per hit forces combos; shatter and burn ignore it.',
   },
   {
-    id: 'scout_bee',
+    id: ENEMY_IDS.scoutWasp,
     displayName: '侦察蜂',
     hp: 45,
     speed: 1.4,
@@ -75,7 +80,7 @@ export const ENEMY_DEFS: readonly EnemyDef[] = [
     note: 'GDD §8.1 — flies straight at the core, ignores the path entirely.',
   },
   {
-    id: 'sapper_crab',
+    id: ENEMY_IDS.demoSapper,
     displayName: '爆破工兵',
     hp: 160,
     speed: 0.8,
@@ -98,7 +103,7 @@ export const ENEMY_DEFS: readonly EnemyDef[] = [
     note: 'GDD §8.1 — shuts towers down for 10s and blows up your bridges.',
   },
   {
-    id: 'repair_drone',
+    id: ENEMY_IDS.repairDrone,
     displayName: '修理无人机',
     hp: 60,
     speed: 1.0,
@@ -114,7 +119,7 @@ export const ENEMY_DEFS: readonly EnemyDef[] = [
     note: 'GDD §8.1 — the wrench icon exists to tell the player to focus it.',
   },
   {
-    id: 'repair_mothership',
+    id: ENEMY_IDS.repairMothership,
     displayName: '修理母舰',
     hp: 900,
     speed: 0.5,
@@ -126,12 +131,12 @@ export const ENEMY_DEFS: readonly EnemyDef[] = [
     radius: 0.7,
     flags: ['boss', 'healer'],
     behaviour: { kind: 'heal', radius: 3, healPerSecond: 15, tickInterval: 1 },
-    onDeathSpawn: [{ defId: 'repair_drone', count: 4, spreadRadius: 1 }],
+    onDeathSpawn: [{ defId: ENEMY_IDS.repairDrone, count: 4, spreadRadius: 1 }],
     ui: { icon: 'enemy_mothership', mesh: 'enemy_mothership', marker: 'marker_wrench' },
     note: 'GDD §8.1 — wave 15 mini-boss; dies into four repair drones.',
   },
   {
-    id: 'leviathan',
+    id: ENEMY_IDS.leviathan,
     displayName: '利维坦',
     hp: 3000,
     speed: 0.4,
@@ -147,21 +152,21 @@ export const ENEMY_DEFS: readonly EnemyDef[] = [
     lossOnLeak: true,
     phases: [
       {
-        id: 'p1_armor',
+        id: ENEMY_PHASE_IDS.leviathanArmorPlates,
         enterAtHpFraction: 1,
         damageTakenMul: 0.5,
         // Shatter is the intended answer, but not the only one (GDD §8.2).
         comboMultipliers: { shatter: 4 },
       },
       {
-        id: 'p2_sappers',
+        id: ENEMY_PHASE_IDS.leviathanSapperRelease,
         enterAtHpFraction: 0.5,
         damageTakenMul: 1,
         comboMultipliers: { shatter: 2 },
-        spawnOnEnter: [{ defId: 'sapper_crab', count: 6, spreadRadius: 1.5 }],
+        spawnOnEnter: [{ defId: ENEMY_IDS.demoSapper, count: 6, spreadRadius: 1.5 }],
       },
       {
-        id: 'p3_overdrive',
+        id: ENEMY_PHASE_IDS.leviathanOverdriveDash,
         enterAtHpFraction: 0.25,
         speedMul: 2,
         // Immune to slow and freeze: the sprint breaks every automation.

@@ -150,6 +150,8 @@ const iceShatter: ReactionRow = {
     { kind: 'removeStatus', status: 'frozen', reason: 'consumed' },
   ],
   impact: {
+    // The stable name src/vfx binds to; renaming this row must not reach it.
+    signal: 'ice_shatter',
     vfx: 'fx_shatter',
     sfx: 'sfx_shatter_glass',
     hitstop: SHATTER_HITSTOP_MS,

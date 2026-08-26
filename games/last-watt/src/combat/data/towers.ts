@@ -1,6 +1,9 @@
 /**
  * Tower table — the 7 towers plus the generator of GDD §7.1.
  *
+ * Ids are the primary keys from `games/last-watt/data/towers.json`; the Round 1
+ * combat-private names live on in `ids.ts` as read-only aliases only.
+ *
  * The columns of the GDD table map onto fields here one for one. What the GDD
  * expresses as prose ("cone spray, no damage, stacks 湿冷 and tags 湿") becomes
  * an `applyStatuses` list, and the combo it feeds is left entirely to the
@@ -8,6 +11,7 @@
  */
 
 import type { TowerDef } from '../entities/towerDef';
+import { TOWER_IDS, UPGRADE_IDS } from './ids';
 import { REACTION_PARAMS } from './reactions';
 import {
   BURN_DURATION,
@@ -25,7 +29,7 @@ import {
 
 export const TOWER_DEFS: readonly TowerDef[] = [
   {
-    id: 'rivet_mg',
+    id: TOWER_IDS.rivetMg,
     displayName: '铆钉机枪',
     cost: 50,
     powerCost: 0,
@@ -41,12 +45,12 @@ export const TOWER_DEFS: readonly TowerDef[] = [
       tags: ['physical', 'ranged'],
       projectileSpeed: 16,
     },
-    upgrades: ['mg_twin_link', 'mg_armor_piercing'],
+    upgrades: [UPGRADE_IDS.mgTwin, UPGRADE_IDS.mgArmorPiercing],
     ui: { icon: 'tower_mg', mesh: 'tower_mg', unlockWave: 1 },
     note: 'GDD §7.1 — cheap single-target DPS 10, hits air. The starting tower.',
   },
   {
-    id: 'tar_sprayer',
+    id: TOWER_IDS.tarSprayer,
     displayName: '焦油喷洒器',
     cost: 70,
     powerCost: 0,
@@ -68,12 +72,12 @@ export const TOWER_DEFS: readonly TowerDef[] = [
         [REACTION_PARAMS.oilCoatingDuration]: OIL_COATING_DURATION,
       },
     },
-    upgrades: ['tar_viscous', 'tar_wide_nozzle'],
+    upgrades: [UPGRADE_IDS.tarSticky, UPGRADE_IDS.tarWide],
     ui: { icon: 'tower_tar', mesh: 'tower_tar', unlockWave: 2 },
     note: 'GDD §7.1 — lays the slick that both slows and feeds the oil-fire combo.',
   },
   {
-    id: 'hydraulic_hammer',
+    id: TOWER_IDS.hydraulicBreaker,
     displayName: '液压破碎锤',
     cost: 120,
     powerCost: 1,
@@ -88,12 +92,12 @@ export const TOWER_DEFS: readonly TowerDef[] = [
       damageType: 'physical',
       tags: ['physical', 'melee'],
     },
-    upgrades: ['hammer_shockwave', 'hammer_rapid_cycle'],
+    upgrades: [UPGRADE_IDS.breakerShockwave, UPGRADE_IDS.breakerFastCycle],
     ui: { icon: 'tower_hammer', mesh: 'tower_hammer', unlockWave: 3 },
     note: 'GDD §7.1 — 45 per swing clears the 40 shatter threshold: the ice key.',
   },
   {
-    id: 'condenser',
+    id: TOWER_IDS.condenserJet,
     displayName: '冷凝喷射塔',
     cost: 130,
     powerCost: 2,
@@ -120,12 +124,12 @@ export const TOWER_DEFS: readonly TowerDef[] = [
         { status: 'wet', duration: WET_DURATION },
       ],
     },
-    upgrades: ['condenser_deep_freeze', 'condenser_dual_nozzle'],
+    upgrades: [UPGRADE_IDS.condenserDeepFreeze, UPGRADE_IDS.condenserDualNozzle],
     ui: { icon: 'tower_condenser', mesh: 'tower_condenser', unlockWave: 3 },
     note: 'GDD §7.1 — no damage; sets up both shatter and conduct.',
   },
   {
-    id: 'flamethrower',
+    id: TOWER_IDS.flameThrower,
     displayName: '火焰喷射塔',
     cost: 140,
     powerCost: 2,
@@ -146,12 +150,12 @@ export const TOWER_DEFS: readonly TowerDef[] = [
         [REACTION_PARAMS.burnDuration]: BURN_DURATION,
       },
     },
-    upgrades: ['flamer_long_burn', 'flamer_extended_range'],
+    upgrades: [UPGRADE_IDS.flameLongBurn, UPGRADE_IDS.flameRange],
     ui: { icon: 'tower_flamer', mesh: 'tower_flamer', unlockWave: 6 },
     note: 'GDD §7.1 — ignites oil, makes fire fields, and thaws your own ice.',
   },
   {
-    id: 'tesla_coil',
+    id: TOWER_IDS.teslaCoil,
     displayName: '特斯拉线圈',
     cost: 200,
     powerCost: 4,
@@ -169,12 +173,12 @@ export const TOWER_DEFS: readonly TowerDef[] = [
       damageType: 'lightning',
       tags: ['lightning', 'chain'],
     },
-    upgrades: ['tesla_five_jumps', 'tesla_heat_sink'],
+    upgrades: [UPGRADE_IDS.teslaChain5, UPGRADE_IDS.teslaCoolRun],
     ui: { icon: 'tower_tesla', mesh: 'tower_tesla', unlockWave: 8 },
     note: 'GDD §7.1 — 4 power is deliberately brutal; wet targets pay it back.',
   },
   {
-    id: 'capacitor_station',
+    id: TOWER_IDS.capacitorStation,
     displayName: '电容站',
     cost: 160,
     powerCost: 0,
@@ -193,12 +197,12 @@ export const TOWER_DEFS: readonly TowerDef[] = [
         [REACTION_PARAMS.overheatDuration]: OVERHEAT_DURATION,
       },
     },
-    upgrades: ['capacitor_long_overload', 'capacitor_heat_sink'],
+    upgrades: [UPGRADE_IDS.capacitorLongSurge, UPGRADE_IDS.capacitorHalfHeat],
     ui: { icon: 'tower_capacitor', mesh: 'tower_capacitor', unlockWave: 6 },
     note: 'GDD §7.1 — does not attack; sells timing instead of damage.',
   },
   {
-    id: 'generator',
+    id: TOWER_IDS.generator,
     displayName: '发电机',
     cost: 100,
     powerCost: 0,

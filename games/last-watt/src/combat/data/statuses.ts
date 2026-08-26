@@ -88,6 +88,8 @@ export const STATUS_DEFS: readonly StatusDef[] = [
         duration: CHILL_IMMUNITY_DURATION,
       },
     ],
+    // The ice shell is a looping effect, so VFX needs both edges of the freeze.
+    signal: 'frozen',
     ui: { icon: 'status_frozen', color: PALETTE.ice },
     note: 'GDD §7.3.1 — shatter-primed; a single hit of 40+ breaks it open.',
   },

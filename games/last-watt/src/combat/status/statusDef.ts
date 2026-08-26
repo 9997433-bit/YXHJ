@@ -9,7 +9,15 @@
  */
 
 import type { EffectSpec } from '../reaction/spec';
-import type { DamageType, Seconds, SourceTag, StatusGroup, StatusId, StatusKind } from '../types';
+import type {
+  DamageType,
+  Seconds,
+  SourceTag,
+  StatusGroup,
+  StatusId,
+  StatusKind,
+  StatusVfxSignal,
+} from '../types';
 
 /** Everything a status can do to its host's numbers. All fields optional. */
 export interface StatusModifiers {
@@ -69,6 +77,12 @@ export interface StatusDef {
    * hand out the 3s chill immunity that makes perma-freeze impossible.
    */
   onEnd?: EffectSpec[];
+  /**
+   * Stable VFX signal published with a `begin` / `end` lifecycle whenever this
+   * status arrives and leaves, so `src/vfx` can start and stop a looping
+   * emitter without knowing the status id. See `../vfxSignals.ts`.
+   */
+  signal?: StatusVfxSignal;
   ui: {
     /** Status icon ring under the health bar (GDD §14.2). */
     icon: string;

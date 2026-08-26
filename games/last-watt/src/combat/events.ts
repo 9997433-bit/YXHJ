@@ -16,8 +16,14 @@ import type {
   StatusId,
   Vec2,
 } from './types';
+import type { CombatVfxSignalMap } from './vfxSignals';
 
-export interface CombatEventMap {
+/**
+ * The three stable VFX signals ride the same bus under their own names, so
+ * `src/vfx` subscribes with `combat.bus.on('ice_shatter', ...)` and never has
+ * to switch on a reaction row id. See `vfxSignals.ts` for the contract.
+ */
+export interface CombatEventMap extends CombatVfxSignalMap {
   enemy_spawned: {
     enemyId: EntityId;
     defId: string;
