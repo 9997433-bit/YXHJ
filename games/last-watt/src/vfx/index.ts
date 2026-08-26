@@ -7,6 +7,18 @@
 
 export { VfxSystem, type VfxSystemOptions } from './VfxSystem';
 export {
+  attachVfxToEngine,
+  type VfxEngineBridge,
+  type VfxEngineBridgeOptions,
+} from './engineBridge';
+export {
+  connectCombatToVfx,
+  type CellPoint,
+  type CombatEventSource,
+  type CombatVfxBridge,
+  type CombatVfxBridgeOptions,
+} from './combatBridge';
+export {
   VfxPriority,
   type EmitterHandle,
   type Vec3Like,
