@@ -11,7 +11,7 @@
       "dps": "点/秒"
     },
     "notes_marker": "notes 中标 [补] 的数值 GDD 未给出，为配表初稿，由程序按此实现、由策划回调",
-    "upgrade_semantics": "upgrades 二选一、互斥、每塔只能买一个；overrides 为字段绝对值覆盖（非增量），flags 为布尔开关置真"
+    "upgrade_semantics": "upgrades 二选一、互斥、每塔只能买一个；overrides 为字段绝对值覆盖（非增量），flags 为布尔开关置真；overrides 键按叶字段名寻址——可命中嵌套对象内字段（如 slow_pct_while_on_cell 在 on_enemy_contact 下），也可引入基表未列出的新字段（如 splash_radius_cells、frozen_duration_s，消费方见 reactions.json）"
   },
   "towers": [
     {
@@ -248,7 +248,7 @@
       },
       "active_overload": {
         "battery_cost": 20,
-        "area": "3x3_centered_on_self",
+        "area": "3x3_centered_on_source",
         "target_filter": "power_cost > 0 且在线的塔",
         "attack_speed_multiplier": 2.0,
         "duration_s": 6,

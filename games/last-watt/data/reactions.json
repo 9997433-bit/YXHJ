@@ -63,9 +63,13 @@
       }
     },
     "cell_coatings": {
-      "notes": "格子涂层与敌人涂层分开存储（Cell.coating，GDD §17.1）",
-      "oil_cell": { "duration_s": 12, "on_enemy_on_cell": { "slow_pct": 0.30, "apply_coating": "oil" } },
-      "fire_cell": { "duration_s": 5, "on_enemy_on_cell": { "apply_reaction": "burning" }, "notes": "时长可被 up_flame_longburn 覆盖为 8s" }
+      "notes": "格子涂层与敌人涂层分开存储（Cell.coating，GDD §17.1）；Cell.coating 取值 = none | oil | fire（与 SYSTEMS.md §2.1、towers.json cell_coating.coating 同一枚举）",
+      "oil": {
+        "duration_s": 12,
+        "on_enemy_on_cell": { "slow_pct": 0.30, "apply_coating": "oil" },
+        "notes": "slow_pct 0.30 为基础值；实际读涂格塔的 on_enemy_contact.slow_pct_while_on_cell（up_tar_sticky 覆盖为 0.40）"
+      },
+      "fire": { "duration_s": 5, "on_enemy_on_cell": { "apply_reaction": "burning" }, "notes": "时长可被 up_flame_longburn 覆盖为 8s" }
     }
   },
   "hit_metadata_contract": {
@@ -140,8 +144,8 @@
       ],
       "cell_variant": {
         "trigger": "火焰锥扫过带 oil 涂层的格子",
-        "effects": [{ "type": "set_cell_coating", "coating": "fire_cell", "duration_s": 5 }],
-        "notes": "火场时长读火焰塔 fire_field_duration_s（升级可至 8s）；过路敌人经 fire_cell.on_enemy_on_cell 点燃"
+        "effects": [{ "type": "set_cell_coating", "coating": "fire", "duration_s": 5 }],
+        "notes": "火场时长读火焰塔 fire_field_duration_s（升级可至 8s）；过路敌人经 status_model.cell_coatings.fire.on_enemy_on_cell 点燃"
       },
       "feedback": { "sfx": "sfx_combo_ignite", "screen_flash": "orange_small", "vfx": "vfx_burning_loop_4s" },
       "notes": "燃烧无视护甲（GDD §8.1）；施加 burning 时若目标为 frozen，会先走 fire_thaw 行（评估顺序保证）"

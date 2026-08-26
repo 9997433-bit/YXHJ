@@ -76,5 +76,5 @@
       "legality": "任何工程操作后，每个当前或未来激活的出怪口到核心必须仍有通路，否则按钮变红禁止（详见 SYSTEMS.md §3）"
     }
   },
-  "notes": "GDD §11 部署期「金币恰好够 2 座（机枪）」与本表 gold=220 冲突，未裁决，见 SYSTEMS.md 决策 D1；v1 无英雄，本表不含附录 A 任何字段"
+  "notes": "GDD §11 部署期「金币恰好够 2 座（机枪）」与本表 gold=220 的冲突已由主调度 Round 2 拍板：维持 220，教学「两座机枪」靠 MapDef.tutorial_hints.deploy_highlight_cells 高亮引导，不锁金币（见 SYSTEMS.md 决策 D1）；v1 无英雄，本表不含附录 A 任何字段"
 }
