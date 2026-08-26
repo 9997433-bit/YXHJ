@@ -13,6 +13,8 @@ import { ENEMY_IDS, TOWER_IDS } from './data/ids';
 import type { Enemy } from './entities/enemy';
 import type { Tower } from './entities/tower';
 import { OpenFieldTerrain } from './ports';
+import { acquireTarget } from './targeting';
+import type { EntityId } from './types';
 
 export interface IceShatterScenario {
   system: CombatSystem;
@@ -120,6 +122,57 @@ export function runIceShatterProbe(seconds = 6, dt = 1 / 60): ShatterProbeReport
   for (let i = 0; i < steps; i += 1) system.update(dt);
 
   report.shatterDamageShare = system.stats.comboShare('shatter');
+  return report;
+}
+
+export interface FrozenPriorityProbeReport {
+  /** The frozen straggler, one swing away from shattering. */
+  frozenEnemyId: EntityId;
+  /** Unfrozen and further along the path: what plain `first` would pick. */
+  leaderEnemyId: EntityId;
+  /** Who the breaker actually swung at. */
+  breakerHitEnemyId?: EntityId;
+  /** True when that swing shattered the ice. */
+  shattered: boolean;
+  /** Who the machine gun locks on — it declares no priority status. */
+  machineGunTargetId?: EntityId;
+}
+
+/**
+ * Both halves of Round 3 ruling 1, in one deterministic frame: a breaker in
+ * reach of two identical haulers, one frozen and trailing, one healthy and
+ * leading. The breaker must spend its swing on the ice, and the machine gun
+ * standing next to it must not, because the preference is a field on the
+ * breaker's attack rather than a global rule about frozen targets.
+ */
+export function runFrozenPriorityProbe(dt = 1 / 60): FrozenPriorityProbeReport {
+  const system = new CombatSystem({ terrain: new OpenFieldTerrain(20, 12) });
+  system.buildTower(TOWER_IDS.hydraulicBreaker, { cx: 5, cy: 5 });
+  const machineGun = system.buildTower(TOWER_IDS.rivetMg, { cx: 5, cy: 7 });
+
+  const leader = system.spawnEnemy(ENEMY_IDS.armoredTruck, { position: { x: 6.4, y: 5.5 } });
+  const straggler = system.spawnEnemy(ENEMY_IDS.armoredTruck, { position: { x: 4.6, y: 5.5 } });
+  leader.pathProgress = 5;
+  straggler.pathProgress = 1;
+  system.applyStatus(straggler, 'frozen', { duration: 2 }, { kind: 'ability' });
+
+  const report: FrozenPriorityProbeReport = {
+    frozenEnemyId: straggler.id,
+    leaderEnemyId: leader.id,
+    shattered: false,
+  };
+  report.machineGunTargetId = acquireTarget(machineGun, system.enemyList())?.id;
+
+  system.bus.on('enemy_damaged', (event) => {
+    // One step is short enough that the rivet is still in the air, so the only
+    // damage this frame is the breaker's instant swing.
+    if (report.breakerHitEnemyId === undefined) report.breakerHitEnemyId = event.enemyId;
+  });
+  system.bus.on('ice_shatter', () => {
+    report.shattered = true;
+  });
+
+  system.update(dt);
   return report;
 }
 

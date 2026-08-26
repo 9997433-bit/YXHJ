@@ -35,6 +35,12 @@ interface AttackBase {
   targetsAir: boolean;
   damageType: DamageType;
   tags: SourceTag[];
+  /**
+   * Statuses that put a reachable target ahead of every other one. The chosen
+   * strategy still orders candidates inside a tier. This is a data field for
+   * the same reason combos are rows: `targeting.ts` never names a status.
+   */
+  priorityStatuses?: readonly StatusId[];
 }
 
 /** Rivet machine gun: a travelling bullet, the only ballistic attack in v1. */

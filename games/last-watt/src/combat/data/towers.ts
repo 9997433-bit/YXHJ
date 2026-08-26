@@ -91,6 +91,10 @@ export const TOWER_DEFS: readonly TowerDef[] = [
       targetsAir: false,
       damageType: 'physical',
       tags: ['physical', 'melee'],
+      // A freeze lasts 2s and this swing comes round every 2.5s, so a breaker
+      // that walks the queue in path order mostly swings at whoever is not
+      // frozen. Round 3 ruling 1: the shatter key looks for ice first.
+      priorityStatuses: ['frozen'],
     },
     upgrades: [UPGRADE_IDS.breakerShockwave, UPGRADE_IDS.breakerFastCycle],
     ui: { icon: 'tower_hammer', mesh: 'tower_hammer', unlockWave: 3 },

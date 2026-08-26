@@ -5,7 +5,7 @@
 import type { Enemy } from './entities/enemy';
 import type { Tower } from './entities/tower';
 import type { AttackDef } from './entities/towerDef';
-import { distance, type TargetStrategy, type Vec2 } from './types';
+import { distance, type StatusId, type TargetStrategy, type Vec2 } from './types';
 
 export function attackRangeOf(attack: AttackDef): number {
   return attack.kind === 'none' ? 0 : attack.range;
@@ -21,8 +21,29 @@ export function inRange(origin: Vec2, enemy: Enemy, range: number): boolean {
 }
 
 /**
+ * How far a candidate jumps the queue before the strategy's own score decides.
+ * Two tiers, most significant first: the player-chosen `air` strategy always
+ * outranks the def-level status preference, so arming a tower against flyers
+ * still does what it says.
+ */
+function preferenceTier(
+  enemy: Enemy,
+  strategy: TargetStrategy,
+  priorityStatuses: readonly StatusId[] | undefined,
+): number {
+  let tier = 0;
+  if (strategy === 'air' && enemy.isAirborne) tier += 2;
+  if (priorityStatuses?.some((status) => enemy.statuses.has(status))) tier += 1;
+  return tier;
+}
+
+/**
  * Picks a tower's target. "first" means furthest along the path (closest to
  * the core), which is what the player means by 首位.
+ *
+ * An attack may also declare `priorityStatuses`; a target carrying one of them
+ * outranks the rest of the field, and the strategy orders what is left. That is
+ * how the breaker spends its 2.5s swing on a target that is only frozen for 2s.
  */
 export function acquireTarget(
   tower: Tower,
@@ -32,33 +53,24 @@ export function acquireTarget(
   const attack = tower.def.attack;
   const range = attackRangeOf(attack);
   if (range <= 0) return undefined;
+  const priorityStatuses = attack.kind === 'none' ? undefined : attack.priorityStatuses;
 
   let best: Enemy | undefined;
+  let bestTier = -1;
   let bestScore = -Infinity;
-  let bestIsAir = false;
 
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
     if (!canAttackTarget(attack, enemy)) continue;
     if (!inRange(tower.position, enemy, range)) continue;
 
-    const isAir = enemy.isAirborne;
+    const tier = preferenceTier(enemy, strategy, priorityStatuses);
+    if (tier < bestTier) continue;
     const score = strategy === 'strongest' ? enemy.hp : enemy.pathProgress;
-
-    if (strategy === 'air') {
-      // Air-priority: any flyer beats any ground unit, then furthest along.
-      if (bestIsAir && !isAir) continue;
-      if (!bestIsAir && isAir) {
-        best = enemy;
-        bestScore = score;
-        bestIsAir = true;
-        continue;
-      }
-    }
-    if (score > bestScore) {
+    if (tier > bestTier || score > bestScore) {
       best = enemy;
+      bestTier = tier;
       bestScore = score;
-      bestIsAir = isAir;
     }
   }
   return best;

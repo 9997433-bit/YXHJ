@@ -122,8 +122,10 @@ export {
 export * from './types';
 export {
   createIceShatterScenario,
+  runFrozenPriorityProbe,
   runIceShatterProbe,
   runOverloadProbe,
+  type FrozenPriorityProbeReport,
   type OverloadProbeReport,
   type ShatterProbeReport,
 } from './scenarios';
