@@ -62,7 +62,10 @@ export interface IceShatterSignal {
   splashRadius: number;
   /** Unit vector from attacker to victim for directional shards; zero if unknown. */
   direction: Vec2;
-  /** Damage the hit carries after the row rewrote it, before armour. */
+  /**
+   * Damage the hit carries once every matching row and the per-enemy combo
+   * multiplier have run, before armour and damage-taken multipliers.
+   */
   damage: number;
   /** The row's full screen-impact budget (hitstop, flash, shake, tip). */
   impact: ImpactSpec;

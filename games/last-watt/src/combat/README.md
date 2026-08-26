@@ -1,9 +1,14 @@
 # `src/combat` — towers, enemies, statuses, reactions
 
-Owner: Round 1 `R1-O3`. Scope: everything under `src/combat/**`, nothing outside it.
+Owner: Round 1 `R1-O3`, Round 2 `R2-O3`. Scope: everything under `src/combat/**`,
+nothing outside it.
 
 Implements GDD §7 (towers and the four combos), §8 (enemies and both bosses) and
 the combat half of §9 (the master-overload ultimate). v1 scope: **no hero**.
+
+Round 2 changed two things at the module boundary, both covered in detail below:
+content ids are now the `data/*.json` primary keys (§2.1), and the presentation
+layer binds to three stable signals instead of to reaction row ids (§6.1).
 
 ---
 
@@ -15,7 +20,8 @@ the combat half of §9 (the master-overload ultimate). v1 scope: **no hero**.
 So there is exactly one file that says what a combo is — [`data/reactions.ts`](data/reactions.ts) —
 and the code that runs it ([`reaction/engine.ts`](reaction/engine.ts)) contains no
 mention of ice, fire, lightning or overload. Grep the runtime for `frozen` and you
-will find the status table and nothing else.
+will find the status table, the frozen VFX signal name, and nothing else — no
+branch anywhere decides what to do because a target happens to be frozen.
 
 Adding a fifth combo is a new row. Adding a new *verb* means one entry in
 `reaction/conditions.ts` or `reaction/effects.ts` — those two registries are the
@@ -42,12 +48,46 @@ combat is the only writer and the only reader. The renderer subscribes to
 import { CombatSystem } from '@/combat';
 
 const combat = new CombatSystem({ terrain, movement, power });
-combat.buildTower('hydraulic_hammer', { cx: 4, cy: 6 });
-combat.spawnEnemy('armored_hauler', { position, path });
+combat.buildTower('hydraulic_breaker', { cx: 4, cy: 6 });
+combat.spawnEnemy('armored_truck', { position, path });
 combat.update(dt);
 ```
 
 Import from `src/combat/index.ts` only. Files inside the module are private.
+
+### 2.1 Content ids
+
+**`games/last-watt/data/*.json` owns every content primary key** (主调度 Round 2
+ruling 3). A tower is `hydraulic_breaker` because `data/towers.json` says so, not
+because combat picked a name. [`data/ids.ts`](data/ids.ts) mirrors those ids as
+symbols (`TOWER_IDS`, `UPGRADE_IDS`, `ENEMY_IDS`, `ENEMY_PHASE_IDS`) so the
+runtime tables reference them instead of restating string literals.
+
+Round 1's combat-private vocabulary is gone as a primary key. It survives only as
+a read-only alias table:
+
+| Was (Round 1, combat) | Is (`data/*.json`) |
+|---|---|
+| `rivet_mg` | `mg_rivet` |
+| `hydraulic_hammer` | `hydraulic_breaker` |
+| `condenser` | `condenser_jet` |
+| `flamethrower` | `flame_thrower` |
+| `scurry_rats` | `swift_rat` |
+| `armored_hauler` | `armored_truck` |
+| `scout_bee` | `scout_wasp` |
+| `sapper_crab` | `demo_sapper` |
+| the 14 `mg_twin_link`-style upgrade names | the 14 `up_mg_twin`-style ids |
+| `p1_armor` / `p2_sappers` / `p3_overdrive` | `p1_armor_plates` / `p2_sapper_release` / `p3_overdrive_dash` |
+
+`buildTower`, `spawnEnemy`, `upgradeTower` and `ContentRegistry` still accept the
+left column, so `src/gameplay`'s `ENEMY_IDS` keeps working untouched. Everything
+combat *emits* — `tower_built.defId`, `enemy_spawned.defId`, every stats bucket —
+is the right column. Two guards keep it that way: `ContentRegistry.validate()`
+rejects an alias that shadows a canonical id, and the self-check (§7) diffs both
+tables against the JSON in both directions.
+
+The alias table is scaffolding. Delete a row from `LEGACY_*_IDS` the moment its
+last caller is gone; the self-check will tell you if you were wrong.
 
 ---
 
@@ -56,12 +96,15 @@ Import from `src/combat/index.ts` only. Files inside the module are private.
 ```
 types.ts          value types, grid helpers            (no deps)
 events.ts         typed event bus — the outbound seam
+vfxSignals.ts     the three stable VFX signal payloads (see §6.1)
 ports.ts          inbound seams + headless defaults
 terrain.ts        cell coating field (oil / fire)
 damage.ts         damage request/result + balance telemetry
 targeting.ts      first / strongest / air, cones, chains
 combatSystem.ts   orchestrator; implements ReactionRuntime
 scenarios.ts      headless probes (see §7)
+selfcheck.ts      id parity + signal lifecycle assertions
+selfcheck.run.ts  CLI entry for the above
 
 status/           statusDef.ts  — defs, modifiers, registry
                   statusSet.ts  — per-enemy container + exclusivity rules
@@ -72,7 +115,8 @@ reaction/         spec.ts       — the DSL (conditions, effects, rows)
                   effects.ts    — one executor per effect kind
                   engine.ts     — priority walk + mutex
                   context.ts    — what a row sees, what it may touch
-data/             tuning.ts     — every GDD number, in one place
+data/             ids.ts        — the data/*.json primary keys + legacy aliases
+                  tuning.ts     — every GDD number, in one place
                   statuses.ts / towers.ts / upgrades.ts / enemies.ts
                   reactions.ts  — THE reaction table
                   index.ts      — ContentRegistry + cross-table validation
@@ -176,6 +220,44 @@ Full map in [`events.ts`](events.ts). The ones the presentation layer wants:
 which is the GDD §20 red line ("any combo above 40% of damage gets reverted")
 measured directly rather than eyeballed.
 
+### 6.1 Stable VFX signals
+
+`reaction_triggered` is keyed by reaction row id and `status_applied` by status
+id. Both are internals of the table: renaming a row, splitting the freeze in two,
+or moving overload onto a different verb would silently break any VFX code that
+switched on those strings. So combat publishes a second, much smaller channel on
+the same bus whose three names are frozen ([`vfxSignals.ts`](vfxSignals.ts)):
+
+| Signal | Lifecycle | Declared by | Carries |
+|---|---|---|---|
+| `ice_shatter` | one-shot | a row's `impact.signal` | position, splash radius, hit direction, final damage, the full `ImpactSpec` |
+| `frozen` | `begin` / `end` | `StatusDef.signal` | enemy id, position, body radius, remaining duration, `endReason` |
+| `overload` | `begin` / `end` | the `overloadTowers` effect verb | scope, capacitor origin, radius in cells, the towers actually reached, duration and the overheat that follows |
+
+```ts
+combat.bus.on('ice_shatter', (e) => vfx.play('ice-shatter', { position: world(e.position), splashRadius: e.splashRadius }));
+combat.bus.on('frozen', (e) => (e.phase === 'begin' ? shells.start(e) : shells.stop(e.enemyId)));
+combat.bus.on('overload', (e) => (e.phase === 'begin' ? vfx.play('overload-start', ...) : vfx.play('overload-end', ...)));
+```
+
+Three properties are worth relying on:
+
+- **No hard-coded branches.** Every producer is a data field or an effect verb,
+  so the anti-`if` rule of GDD §7.2 still holds. The capacitor's 3x3 surge and
+  the §9 ultimate light up through the same code path because they use the same
+  verb, not because anything tested for `master_overload`.
+- **Exactly one producer per signal.** `ContentRegistry.validate()` fails if two
+  rows both claim `ice_shatter` (double burst) or if a signal has no producer at
+  all (VFX listening to silence).
+- **Lifecycles always close.** `frozen` gets an `end` however the freeze ended —
+  expiry, shatter, thaw — *and* when the host dies, leaks or is despawned mid
+  freeze, so a looping emitter can never outlive its target. `overload` closes
+  when its window elapses.
+
+Ordering is fixed too: the shatter's `frozen:end` lands before its `ice_shatter`
+burst, because the row removes the status before the signal is published. The
+self-check asserts that.
+
 ---
 
 ## 7. Verification
@@ -183,9 +265,21 @@ measured directly rather than eyeballed.
 `scenarios.ts` runs combat headlessly — no renderer, no grid module, no game loop:
 
 ```ts
-import { runIceShatterProbe } from '@/combat';
+import { runIceShatterProbe, runOverloadProbe } from '@/combat';
 const report = runIceShatterProbe();
 ```
+
+On top of those probes, `selfcheck.ts` is the executable version of the two
+contracts above — id parity against `data/*.json` and the signal lifecycles:
+
+```
+npx vite-node src/combat/selfcheck.run.ts
+```
+
+16 assertions, currently all passing. It reads `data/towers.json` and
+`data/enemies.json` directly and diffs them against the runtime tables in both
+directions, so a tower added to one and not the other fails here rather than
+three systems downstream.
 
 The probe walks the whole GDD §7.3.1 chain and returns what happened. Current
 results, all matching the GDD:
@@ -220,9 +314,12 @@ Three resolution details worth knowing, all deliberate:
   grey "-5" chip floater reads `absorbedByArmor`, so the wave-3 lesson survives
   the floor.
 
-For `R1-G1` (tests): assert against `runIceShatterProbe()` and build new probes
-out of `CombatSystem` + `OpenFieldTerrain` directly — no mocking needed, every
-external dependency is already a port with a headless default.
+For `R2-G1` (tests): assert against `runIceShatterProbe()`, `runOverloadProbe()`
+and `runCombatSelfCheck()`, and build new probes out of `CombatSystem` +
+`OpenFieldTerrain` directly — no mocking needed, every external dependency is
+already a port with a headless default. The shatter report now also carries the
+signal trace (`signals`, `shatterSplashRadius`), which is the cheapest way to
+assert the VFX contract without standing up a renderer.
 
 ---
 
