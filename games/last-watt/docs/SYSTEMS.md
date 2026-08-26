@@ -10,9 +10,9 @@
 
 - 单位：距离=格（欧氏，格中心到格中心），时间=秒，速度=格/秒。
 - 坐标：`[x, y]`，x 0–19 西→东，y 0–11 北→南；`terrain_rows[y]` 是第 y 行的 20 字符串。
-- id：全小写下划线，跨表引用一律用 id（塔 `mg_rivet`、敌人 `demo_sapper`、升级 `up_mg_twin`…）。
+- id：全小写下划线，跨表引用一律用 id（塔 `mg_rivet`、敌人 `demo_sapper`、升级 `up_mg_twin`、Boss 相位 `p1_armor_plates`、出怪口 `gate_1`、事件 `wave5_breach`…）。**规范主键 = `data/*.json` 的 `id` 字段（Round 2 主调度拍板 3）**：代码侧禁止另立主键，只许只读别名映射指向这些 id（现行注册表见 `src/combat/data/ids.ts`，其 `LEGACY_*` 表只减不增）。
 - 所有 JSON 带 `schema_version`；`notes` 字段仅供人读，运行时忽略。
-- 逻辑为纯 2D 网格 + 固定步长 tick（建议 50ms/20Hz，[补]）；表现层 3D 与本文无关。
+- 逻辑为纯 2D 网格 + 固定步长 tick = **60Hz**（Round 2 主调度拍板 2，与现引擎一致；本稿的秒制时长换算为 tick 时向上取整）；表现层 3D 与本文无关。
 
 ## 1. 数据文件索引
 
@@ -57,7 +57,7 @@ Cell {
 - 地面敌人：从核心反向 BFS 生成 flow field，全体共享；邻接为 4 向 [补]，邻居扩展顺序固定 N→E→S→W 保证确定性。
 - 重算触发（全量重算，GDD §5.1）：挖沟完工、搭桥完工、桥被炸、事件格开启（波 5 侧墙 / B 区闸门）、丢区开支路。
 - 飞行敌人（`is_flying`）：出怪口直线飞核心，无视地形、涂层、flow field；只有 `targets_air=true` 的塔能索敌。
-- **合法性规则**（工程按钮红/灰判定）：模拟该操作后，对**每个当前已激活或未来会激活**的出怪口（`active_from_wave` 未到的 gate_2 也算）跑 BFS，到核心必须全部连通，否则禁止。
+- **合法性规则**（工程按钮红/灰判定）：模拟该操作后，对**每个当前已激活或未来会激活**的出怪口（`active_from_wave` 未到的 gate_2 也算；`active_waves` 型临时口如 gate_1b 只在其活跃波计入）跑 BFS，到核心必须全部连通，否则禁止。
   - 推论 1：波 5 前挖 `(8,2)/(9,2)` 非法（会截断 gate_1 唯一通路）；支路开通后合法。
   - 推论 2：挖 `(5,10)/(6,10)` 仅在 `(7,8),(7,9)` 桥已架好时合法。
   - 这些都不需要特判，跑同一个校验即可。
@@ -85,10 +85,10 @@ Cell {
 - 索敌策略（玩家可切，`target_strategy`）：`first`（默认，路径进度最深）/ `strongest`（当前 HP 最高）/ `air_first`（飞行优先，仅对空塔可选）。
 - `attack_kind` 决定结算路径：
   - `single_hit`：机枪（唯一弹道，出膛锁定即命中 [补]）、破碎锤（即时）。**只有这类且单发 ≥40 能触发冰碎**。
-  - `cone_status` / `cone_dot`：冷凝、火焰——锥内即时判定，每 tick 结算。
+  - `cone_status` / `cone_dot`：冷凝、火焰——锥内即时判定，每 tick 结算。火焰（`cone_dot`）命中锥内全体；冷凝（`cone_status`）每 tick 只喷 `simultaneous_targets` 个目标（基础 1，「双喷口」升级 2）。
   - `chain`：特斯拉——首目标 + 逐跳最近敌人（不重复命中），每跳 ×(1−0.30)；导电时见反应表。
   - `cell_coater`：焦油——不打敌人，只涂格子。
-- 升级：二选一互斥、每塔一个，`overrides` 为**绝对值覆盖**、`flags` 为置真；无退款差价（卖塔按 70% 总价返还）。
+- 升级：二选一互斥、每塔一个，`overrides` 为**绝对值覆盖**、`flags` 为置真；`overrides` 键按叶字段名寻址——可命中嵌套字段（如 `slow_pct_while_on_cell`），也可引入基表未列的新字段（如 `splash_radius_cells`、`frozen_duration_s`，消费方为反应表）；无退款差价（卖塔按 70% 总价返还）。
 - 停机状态（互相独立，任一为真即不攻击）：`overheat_timer`（超载后 3s/1.5s）、被爆破工兵自爆停机 10s、所在变电区已丢失（本局永久）。
 - 电容站主动技（=combo「超载」）：见 `reactions.json.overload` 行；3×3 = 以电容站为中心的切比雪夫距离 ≤1。
 
@@ -139,7 +139,7 @@ onHit(hit, target):
 
 **积累 → 冻结：**
 
-1. 冷凝塔每 0.5s tick：锥内目标 `wet_cold +1` 并附 `wet` 涂层 6s。
+1. 冷凝塔每 0.5s tick：锥内至多 `simultaneous_targets` 个目标（基础 1，「双喷口」升级 2）`wet_cold +1` 并附 `wet` 涂层 6s。
 2. `wet_cold == 3` → 施加 `frozen`（时长 2.0s；来源塔带 `up_cond_deepfreeze` 则 2.5s），层数清零，速度 0，材质切冰壳。
 3. `frozen` 被移除（自然到时 / 冰碎 / 火焰解冻，任何途径）→ 自动施加 `freeze_immunity` 3s，期间不可再叠湿冷、不可再冻（防无限冻）。
 
@@ -181,7 +181,7 @@ executeShatter(hit, target):
 - 波间无限暂停，手动开波；提前开波 = 上一波结束、倒计时未走完即开（图 1 无自动倒计时，提前开波按钮常驻 [补]），本波结束奖励 ×1.10。
 - 下一波预览 UI **直接聚合下一条 WaveDef**（图标×数量 + 对空/拆/疗高亮），不建第二份数据（GDD §17.2-3）。
 - 图 2/3 复用同一份基础波表 × `MapDef.wave_multipliers`：`enemy_hp` 乘 HP；`weight_fly_heal`/`weight_demolisher` 乘对应类型 `count`（四舍五入，最少 1）；首登场波差异用各图 `first_appearance_waves` 对基础表做裁剪/替换。图 1 全 ×1.0，`waves.map1.json` 即最终值。
-- 图纸解锁：`unlock_schedule`（wave + phase start/end）驱动建造菜单可用性；教学演出（慢放、提示条、老周语音）由 `script_events` 引用 id，具体脚本属「教学触发表」（GDD §18.4），不在本稿范围。
+- 图纸解锁：`unlock_schedule`（wave + phase：deploy/start/end）驱动建造菜单可用性；教学演出（慢放、提示条、老周语音）由 `script_events` 引用 id，具体脚本属「教学触发表」（GDD §18.4），不在本稿范围。
 
 ## 9. 大招「主控过载」
 
@@ -208,7 +208,7 @@ executeShatter(hit, target):
 
 | # | 问题 | 本稿裁决 | 依据/风险 |
 |---|---|---|---|
-| D1 | §11 部署期「金币恰好够 2 座」 vs §6.1 起始金币 220（可买 4 座机枪） | **不裁决**，GameState 按 §6.1 取 220；教学期若需限制，走教学脚本临时锁金币或锁建造次数 | 报给 GDD 责任人拍板 |
+| D1 | §11 部署期「金币恰好够 2 座」 vs §6.1 起始金币 220（可买 4 座机枪） | **已拍板（Round 2 主调度裁决 4）**：维持 220，教学「两座机枪」靠 `tutorial_hints.deploy_highlight_cells` 高亮引导，不锁金币、不锁建造 | GameState 按 §6.1 取 220；配表注释已同步结案 |
 | D2 | 护甲减伤后是否有保底 | 保底 1 伤（`max(1, dmg−armor)`） | 机枪 5 − 甲 5 = 0 会完全免伤，「刮痧」应刮得动 |
 | D3 | 冰碎 1 格溅射是否波及飞行单位、伤害几何 | 溅射 = 主目标最终值 100%、无视护甲、含飞行、**不可再触发冰碎** | 防连锁爆炸；比例可调 |
 | D4 | 修理无人机是否飞行 | 地面单位（表现层悬浮） | §8.1 只给侦察蜂标了「飞」；若判飞行则波 8 前强制买对空，教学节拍会乱 |
@@ -225,4 +225,4 @@ executeShatter(hit, target):
 
 ---
 
-*本文档由 R1-F3 维护；`ARCHITECTURE.md` / `VISUAL_BIBLE.md` / `ACCEPTANCE.md` 由其他代理负责，本文不重复其内容。*
+*本文档由 R1-F3 起草、R2-F3 修订（对齐 Round 2 拍板：60Hz 逻辑时钟、`data/*.json` 规范主键、D1 结案；同轮统一了格子涂层枚举 oil/fire 与超载区域枚举）；`ARCHITECTURE.md` / `VISUAL_BIBLE.md` / `ACCEPTANCE.md` 由其他代理负责，本文不重复其内容。*
