@@ -169,6 +169,39 @@
 | R3-G1 | gpt-sol | 合并后全测试链 |
 | R3-G2 | gpt-sol | 波 10 + 冰碎同帧预算，不用 M3 剖面 |
 
+#### R3-F3 回报（M1 门控写入配表 + 升级价差异表，已交付）
+
+**门控落地（Round 2 主调度拍板 3，全部写入 `data/**` 并在 SYSTEMS.md 加短注 §8/§10/§12 D15/D16）**
+
+- 解锁门控：`waves.map1.json` 的 `unlock_schedule` 止于波 3（机枪/焦油/发电机/冷凝/破碎锤）；火焰/特斯拉/电容条目移入新块 `m2_unlock_schedule`（保留原波 6/8/9 作 M2 暂定参考值）。波 6/8/9 的 `teach` 文案改写为 M1 口径，波 6 `tip_oil_fire_once`、波 8 `tip_conduct_once` 两个教学脚本事件随塔移出 M1（代码不按字符串匹配这两个 id，删除无副作用）。`towers.json` 增加 `conventions.milestone_gate` 并给三座 M2 塔补 notes。
+- 丢区门控：M1 完整度只扣分不丢区。`game_state.defaults.json` `rules.integrity` 增加 `zone_loss_active_from_milestone: "M2"`；`maps/map1.json` 增加顶层 `milestone_gates.m1_zone_loss: false`，两个 zone 与 `zone_b_floodgate` 事件标 `active_from_milestone: "M2"`。`≤0` 判负与星级分档（80/50）不受门控影响。
+- 新增字段均为数据侧扩展，现行 importer（`src/gameplay/data/importers.ts` 只读白名单字段）自动忽略，不破坏现运行时；真正按门控执行需代码侧接线（见下）。
+
+**升级价差异表（规范值 = `data/towers.json`，代码侧 `src/combat/data/upgrades.ts` 由 R3-O3 改齐；14 条中 10 条分叉）**
+
+| 升级 id | 塔 | JSON（规范） | 代码现值 | 代码需改 |
+|---|---|---|---|---|
+| up_mg_twin | mg_rivet | 90 | 90 | 一致 |
+| up_mg_ap | mg_rivet | **120** | 110 | +10 |
+| up_tar_sticky | tar_sprayer | 90 | 90 | 一致 |
+| up_tar_wide | tar_sprayer | **120** | 100 | +20 |
+| up_breaker_shockwave | hydraulic_breaker | **150** | 130 | +20 |
+| up_breaker_fastcycle | hydraulic_breaker | **120** | 140 | −20 |
+| up_cond_deepfreeze | condenser_jet | 120 | 120 | 一致 |
+| up_cond_dualnozzle | condenser_jet | **150** | 130 | +20 |
+| up_flame_longburn | flame_thrower | **100** | 130 | −30 |
+| up_flame_range | flame_thrower | **130** | 120 | +10 |
+| up_tesla_chain5 | tesla_coil | 150 | 150 | 一致 |
+| up_tesla_coolrun | tesla_coil | **130** | 150 | −20 |
+| up_cap_longsurge | capacitor_station | **140** | 120 | +20 |
+| up_cap_halfheat | capacitor_station | **110** | 130 | −20 |
+
+**顺手登记的代码侧接线债（不属本任务改动范围）**
+
+1. 解锁表分叉（O1/O3）：`src/combat/data/towers.ts` `ui.unlockWave` 现为 flame=6、tesla=8、capacitor=6（连 JSON 旧值 9 都不一致）；按门控三者在 M1 应不可解锁（建议 `unlockWave` 置 11+ 或由 `M1_BUILD_MENU` 白名单兜底——后者现已不含三塔，`BuildSystem.unlockedByTable` 才是漏洞点）。
+2. 丢区接线（O2）：`world.applyIntegrity` / `CombatLink.settleIntegrity` 现仍按 `triggerIntegrity` 80/50 丢区，需消费 `zone_loss_active_from_milestone` / `milestone_gates.m1_zone_loss` 门控（importer 需把该字段带进 `ZoneDef`）。内置图 `map1Powerhouse.ts` 的 zones（80/50）同样受影响。
+3. 升级价效果侧分叉（O3 改价时顺带核）：`up_tar_wide`（JSON=射程 2.5→3.5 vs 代码=涂radius+1）、`up_cond_dualnozzle`（JSON=同时喷 2 目标 vs 代码=锥角+18°）、`up_breaker_shockwave`（JSON 有 `splash_damage_ratio: 1.0` 字段，代码只加 splash 半径）；价格以 JSON 为准是拍板，效果语义分叉按 SYSTEMS §5 的 `overrides` 语义靠拢或另开裁决。
+
 #### R3-O3 回报（重击优先冻结 + 升级价跟 JSON，已交付）
 
 - 独占路径 `src/combat/**`，三个提交已推 `agent/last-watt`：`37f1765` 升级价、`7060784` 索敌优先、`17f1e53` 自检与 README。

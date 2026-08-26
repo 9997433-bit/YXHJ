@@ -57,7 +57,8 @@
       "zone_b_threshold": 50,
       "defeat_threshold": 0,
       "thresholds_trigger_once": true,
-      "notes": "跌破阈值即触发对应丢区（效果见 MapDef.zones.on_lost），修复回 80 以上也不撤销"
+      "zone_loss_active_from_milestone": "M2",
+      "notes": "M1 门控（Round 2 主调度拍板 3，R3-F3 落地）：M1 完整度只扣分不丢区——80/50 阈值在 M1 仅用于星级与 UI 分档，不触发 MapDef.zones.on_lost；≤0 判负不受门控影响。M2 起跌破阈值即触发对应丢区（单向、每档一次），修复回 80 以上也不撤销"
     },
     "victory": {
       "win_condition": "撑过 20 波",

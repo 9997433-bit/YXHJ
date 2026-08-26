@@ -11,6 +11,8 @@
       "dps": "点/秒"
     },
     "notes_marker": "notes 中标 [补] 的数值 GDD 未给出，为配表初稿，由程序按此实现、由策划回调",
+    "milestone_gate": "M1 门控（Round 2 主调度拍板 3，R3-F3 落地）：M1（图 1 波 1–10）只解锁 milestone=M1 的蓝图；milestone=M2 的 flame_thrower / tesla_coil / capacitor_station 不进 M1 解锁表与建造菜单，解锁波次见 waves.map1.json.m2_unlock_schedule",
+    "upgrade_cost_authority": "升级价格规范值 = 本表 upgrades[].cost（Round 2 拍板 3「规范主键/数值以 data/*.json 为准」的推论）；代码侧 src/combat/data/upgrades.ts 与本表分叉时以本表为准（R3-O3 对齐，差异表见 .agent_workspace/PROGRESS.md R3-F3 回报）",
     "upgrade_semantics": "upgrades 二选一、互斥、每塔只能买一个；overrides 为字段绝对值覆盖（非增量），flags 为布尔开关置真；overrides 键按叶字段名寻址——可命中嵌套对象内字段（如 slow_pct_while_on_cell 在 on_enemy_contact 下），也可引入基表未列出的新字段（如 splash_radius_cells、frozen_duration_s，消费方见 reactions.json）"
   },
   "towers": [
@@ -196,7 +198,7 @@
           "overrides": { "range": 3.0 }
         }
       ],
-      "notes": "持续 8 DPS 拆为 2 伤/0.25s tick [补]；火焰单 tick 恒 <40，永不触发冰碎，只会触发冰火不容反 combo"
+      "notes": "持续 8 DPS 拆为 2 伤/0.25s tick [补]；火焰单 tick 恒 <40，永不触发冰碎，只会触发冰火不容反 combo；M1 门控：波 1–10 不解锁（见 conventions.milestone_gate）"
     },
     {
       "id": "tesla_coil",
@@ -228,7 +230,7 @@
           "flags": ["no_overheat_after_overload"]
         }
       ],
-      "notes": "range 2.5 / 攻速 1.5s 为 [补]；单发 25 <40 不触发冰碎；导电 combo 见 reactions.json"
+      "notes": "range 2.5 / 攻速 1.5s 为 [补]；单发 25 <40 不触发冰碎；导电 combo 见 reactions.json；M1 门控：波 1–10 不解锁（见 conventions.milestone_gate）"
     },
     {
       "id": "capacitor_station",
@@ -269,7 +271,7 @@
           "overrides": { "overheat_offline_s": 1.5 }
         }
       ],
-      "notes": "不攻击；超载 = 4 combo 之一，规则同步登记在 reactions.json（GDD §7.2 要求全部 combo 走反应表）"
+      "notes": "不攻击；超载 = 4 combo 之一，规则同步登记在 reactions.json（GDD §7.2 要求全部 combo 走反应表）；M1 门控：波 1–10 不解锁（见 conventions.milestone_gate），M1 储能仅由大招体系消费"
     },
     {
       "id": "generator",

@@ -22,7 +22,7 @@
 | `data/enemies.json` | EnemyDef ×8（3 基础 + 飞/拆/疗 + 双 Boss 含三阶段） | §8 |
 | `data/reactions.json` | 状态模型（涂层/反应态/计数器）+ 4 combo + 反 combo「冰火不容」 | §7.2 §7.3 |
 | `data/maps/map1.json` | 图 1「主厂房」20×12 灰盒：地形、出怪口、事件格、变电区、工程配额 | §5 §10 §11 |
-| `data/waves.map1.json` | 图 1 波 1–10 + 图纸解锁时刻表（波 11–20 TODO M2） | §11 §12 §8.3 |
+| `data/waves.map1.json` | 图 1 波 1–10 + 图纸解锁时刻表（M1 门控：火焰/特斯拉/电容移入 `m2_unlock_schedule`；波 11–20 TODO M2） | §11 §12 §8.3 |
 | `data/game_state.defaults.json` | GameState 默认值 + 全局经济/电力/胜负常量 | §6 §9 §10 §17.1 |
 
 ## 2. 网格、地形与工程
@@ -88,7 +88,7 @@ Cell {
   - `cone_status` / `cone_dot`：冷凝、火焰——锥内即时判定，每 tick 结算。火焰（`cone_dot`）命中锥内全体；冷凝（`cone_status`）每 tick 只喷 `simultaneous_targets` 个目标（基础 1，「双喷口」升级 2）。
   - `chain`：特斯拉——首目标 + 逐跳最近敌人（不重复命中），每跳 ×(1−0.30)；导电时见反应表。
   - `cell_coater`：焦油——不打敌人，只涂格子。
-- 升级：二选一互斥、每塔一个，`overrides` 为**绝对值覆盖**、`flags` 为置真；`overrides` 键按叶字段名寻址——可命中嵌套字段（如 `slow_pct_while_on_cell`），也可引入基表未列的新字段（如 `splash_radius_cells`、`frozen_duration_s`，消费方为反应表）；无退款差价（卖塔按 70% 总价返还）。
+- 升级：二选一互斥、每塔一个，`overrides` 为**绝对值覆盖**、`flags` 为置真；`overrides` 键按叶字段名寻址——可命中嵌套字段（如 `slow_pct_while_on_cell`），也可引入基表未列的新字段（如 `splash_radius_cells`、`frozen_duration_s`，消费方为反应表）；无退款差价（卖塔按 70% 总价返还）。**升级价格规范值 = `towers.json.upgrades[].cost`**：代码侧 `src/combat/data/upgrades.ts` 与 JSON 分叉时以 JSON 为准（R3-O3 对齐，差异表见 `.agent_workspace/PROGRESS.md` R3-F3 回报）。
 - 停机状态（互相独立，任一为真即不攻击）：`overheat_timer`（超载后 3s/1.5s）、被爆破工兵自爆停机 10s、所在变电区已丢失（本局永久）。
 - 电容站主动技（=combo「超载」）：见 `reactions.json.overload` 行；3×3 = 以电容站为中心的切比雪夫距离 ≤1。
 
@@ -182,6 +182,7 @@ executeShatter(hit, target):
 - 下一波预览 UI **直接聚合下一条 WaveDef**（图标×数量 + 对空/拆/疗高亮），不建第二份数据（GDD §17.2-3）。
 - 图 2/3 复用同一份基础波表 × `MapDef.wave_multipliers`：`enemy_hp` 乘 HP；`weight_fly_heal`/`weight_demolisher` 乘对应类型 `count`（四舍五入，最少 1）；首登场波差异用各图 `first_appearance_waves` 对基础表做裁剪/替换。图 1 全 ×1.0，`waves.map1.json` 即最终值。
 - 图纸解锁：`unlock_schedule`（wave + phase：deploy/start/end）驱动建造菜单可用性；教学演出（慢放、提示条、老周语音）由 `script_events` 引用 id，具体脚本属「教学触发表」（GDD §18.4），不在本稿范围。
+- **M1 门控（Round 2 主调度拍板 3，R3 落地）**：M1（图 1 波 1–10）解锁表止于波 3——机枪/焦油/发电机/冷凝/破碎锤；火焰/特斯拉/电容为 M2 蓝图，条目已移至 `waves.map1.json.m2_unlock_schedule`，M1 不解锁、不进建造菜单（代码侧 `ui.unlockWave` 需同步，见 PROGRESS R3-F3 回报）。
 
 ## 9. 大招「主控过载」
 
@@ -192,10 +193,11 @@ executeShatter(hit, target):
 
 ## 10. 完整度、丢区、胜负
 
-- 完整度 0–100；漏怪按表扣分。阈值**单向触发、每档一次**：
+- **M1 门控（Round 2 主调度拍板 3，R3 落地）**：M1 完整度**只扣分不丢区**——80/50 阈值在 M1 仅用于星级与 UI 分档，不触发 `zones.on_lost`（`game_state.defaults.json` `zone_loss_active_from_milestone: "M2"`、`map1.json` `milestone_gates.m1_zone_loss: false`）；`≤0` 判负不受门控影响。
+- 完整度 0–100；漏怪按表扣分。阈值**单向触发、每档一次**（丢区档自 M2 起生效）：
   - `≤80` 丢 A 区：区内耗电塔本局永久停机、区内禁建，`power_cap −4`；
   - `≤50` 丢 B 区：`power_cap −6`，开启闸门路（`zone_b_floodgate` 事件格 → 寻路重算）；
-  - `≤0` 或利维坦抵核心：Game Over。
+  - `≤0` 或利维坦抵核心：Game Over（M1/M2 均生效）。
 - 波间修复：100 金 = +20（上限 100），**不撤销**已触发丢区。
 - 胜利 = 撑过 20 波；星级 3/2/1 = 完整度 ≥80 / ≥50 / >0。
 - Game Over 界面数据需求（GDD M2 验收）：记录每波每口漏怪数，输出「输在第几波、哪个口漏最多」。
@@ -221,8 +223,10 @@ executeShatter(hit, target):
 | D11 | 停机/断电塔是否仍占供电 | 仍占，直到卖掉 | §6.3-3 明说丢区惩罚「逼你卖塔」 |
 | D12 | 多重减速如何叠加 | 取最大值 | 焦油 30/40% 与未来减速源；冻结=速度 0 覆盖 |
 | D13 | 大招与电容超载同时生效 | 攻速取最大（不叠乘至 ×4） | 防止双超载秒本挂机化（§20 后期挂机红线） |
-| D14 | 电容站解锁波次 | 波 9 [补] | §11 只排到波 8；波 9 恰好在波 10 重构点前给玩家储能工具 |
+| D14 | 电容站解锁波次 | 波 9 [补]；**R3 更新**：M1 门控后电容站随 M2 解锁，波 9 保留为 `m2_unlock_schedule` 暂定参考值 | §11 只排到波 8；波 9 恰好在波 10 重构点前给玩家储能工具 |
+| D15 | R2 验收发现图 1 波 6–9 解锁了 M1 范围外的火焰/特斯拉/电容（范围回潮，S-01/S-03 相关） | **已拍板（Round 2 主调度裁决 3，R3-F3 落地）**：M1 波 1–10 不解锁这三张蓝图，解锁表止于波 3；条目移至 `waves.map1.json.m2_unlock_schedule` | 波 6/8/9 教学文案已同步改写为 M1 口径；代码侧 `ui.unlockWave` 由 R3-O1/O3 对齐 |
+| D16 | GDD M1「无丢区」 vs 配表 80/50 阈值已会触发丢区 | **已拍板（同上）**：M1 完整度只扣分不丢区，丢区自 M2 激活（`zone_loss_active_from_milestone` / `milestone_gates.m1_zone_loss`） | `≤0` 判负与星级分档保留；M2 平衡稿复核阈值数值 |
 
 ---
 
-*本文档由 R1-F3 起草、R2-F3 修订（对齐 Round 2 拍板：60Hz 逻辑时钟、`data/*.json` 规范主键、D1 结案；同轮统一了格子涂层枚举 oil/fire 与超载区域枚举）；`ARCHITECTURE.md` / `VISUAL_BIBLE.md` / `ACCEPTANCE.md` 由其他代理负责，本文不重复其内容。*
+*本文档由 R1-F3 起草、R2-F3 修订（对齐 Round 2 拍板：60Hz 逻辑时钟、`data/*.json` 规范主键、D1 结案；同轮统一了格子涂层枚举 oil/fire 与超载区域枚举）、R3-F3 增补（M1 门控落地：解锁表止于波 3、完整度只扣分不丢区，D15/D16；升级价规范值 = `towers.json`）；`ARCHITECTURE.md` / `VISUAL_BIBLE.md` / `ACCEPTANCE.md` 由其他代理负责，本文不重复其内容。*

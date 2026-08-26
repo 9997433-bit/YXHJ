@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source": "docs/GDD-余电.md v1.0 §11 前 5 波教学 / §12 难度曲线 / §8.3 首次登场波；出怪数量与间隔为 [补] 配表初稿",
   "map_id": "map1_main_plant",
-  "scope": "波 1–10（覆盖 M1 垂直切片）；波 11–20（含波 15 母舰、波 20 利维坦）待 M2 平衡稿补齐",
+  "scope": "波 1–10（覆盖 M1 垂直切片；M1 门控：仅解锁 mg_rivet / tar_sprayer / generator / condenser_jet / hydraulic_breaker）；波 11–20（含波 15 母舰、波 20 利维坦）待 M2 平衡稿补齐",
   "global_rules": {
     "reward_formula": "波结束奖励 = wave_no × 5（reward 字段已展开存值）",
     "early_call_bonus": 0.10,
@@ -13,11 +13,16 @@
   "unlock_schedule": [
     { "wave": 0, "phase": "deploy", "unlocks": ["mg_rivet"], "teach": "放塔、射程圈；部署期仅机枪" },
     { "wave": 2, "phase": "end", "unlocks": ["tar_sprayer"], "teach": "减速、涂层、完整度条" },
-    { "wave": 3, "phase": "start", "unlocks": ["generator", "condenser_jet", "hydraulic_breaker"], "teach": "电力、冰碎；供电条首次亮起" },
-    { "wave": 6, "phase": "start", "unlocks": ["flame_thrower"], "teach": "油火：油渍+火焰图纸组合节拍" },
-    { "wave": 8, "phase": "start", "unlocks": ["tesla_coil"], "teach": "导电：水洼旁解锁特斯拉" },
-    { "wave": 9, "phase": "start", "unlocks": ["capacitor_station"], "teach": "储能与超载", "notes": "[补] GDD 未指明电容站解锁波，暂定波 9" }
+    { "wave": 3, "phase": "start", "unlocks": ["generator", "condenser_jet", "hydraulic_breaker"], "teach": "电力、冰碎；供电条首次亮起", "notes": "M1 解锁表到此为止（Round 2 主调度拍板 3，R3 落地）：波 1–10 不再解锁任何蓝图" }
   ],
+  "m2_unlock_schedule": {
+    "milestone_gate": "M1 门控（Round 2 主调度拍板 3，R3-F3 落地）：flame_thrower / tesla_coil / capacitor_station 在波 1–10 不解锁、不进 M1 建造菜单；下列波次为 R1 初稿的暂定参考值（原波 6/8/9），随波 11–20 的 M2 平衡稿一并定稿",
+    "entries": [
+      { "wave": 6, "phase": "start", "unlocks": ["flame_thrower"], "teach": "油火：油渍+火焰图纸组合节拍" },
+      { "wave": 8, "phase": "start", "unlocks": ["tesla_coil"], "teach": "导电：水洼旁解锁特斯拉" },
+      { "wave": 9, "phase": "start", "unlocks": ["capacitor_station"], "teach": "储能与超载", "notes": "[补] GDD 未指明电容站解锁波，暂定波 9（决策 D14）" }
+    ]
+  },
   "waves": [
     {
       "wave_no": 1,
@@ -69,8 +74,7 @@
         { "enemy_id": "swift_rat", "count": 12, "interval_s": 0.6, "gate_id": "gate_1", "start_delay_s": 0 },
         { "enemy_id": "scavenger_bug", "count": 8, "interval_s": 0.9, "gate_id": "gate_1", "start_delay_s": 8 }
       ],
-      "teach": "油火首秀：快速虫潮喂焦油+火焰；combo 一次性提示条",
-      "script_events": ["tip_oil_fire_once"]
+      "teach": "快速虫潮压力波：焦油减速喂进机枪/破碎锤火力网（M1 门控：原「油火首秀」随火焰喷射塔移至 M2，见 m2_unlock_schedule）"
     },
     {
       "wave_no": 7,
@@ -90,8 +94,7 @@
         { "enemy_id": "armored_truck", "count": 2, "interval_s": 6.0, "gate_id": "gate_1", "start_delay_s": 4 },
         { "enemy_id": "repair_drone", "count": 2, "interval_s": 6.0, "gate_id": "gate_1", "start_delay_s": 5 }
       ],
-      "teach": "治疗首秀（图 1 首登场波=8）：扳手图标提示集火；水洼旁解锁特斯拉练导电",
-      "script_events": ["tip_conduct_once"]
+      "teach": "治疗首秀（图 1 首登场波=8）：扳手图标提示集火（M1 门控：原「水洼旁解锁特斯拉练导电」随特斯拉移至 M2，见 m2_unlock_schedule）"
     },
     {
       "wave_no": 9,
@@ -102,7 +105,7 @@
         { "enemy_id": "repair_drone", "count": 2, "interval_s": 5.0, "gate_id": "gate_1", "start_delay_s": 8 },
         { "enemy_id": "scout_wasp", "count": 4, "interval_s": 2.0, "gate_id": "gate_1", "start_delay_s": 10 }
       ],
-      "teach": "第一压力峰收口：厚甲+治疗+对空混编，逼出储能/超载决策"
+      "teach": "第一压力峰收口：厚甲+治疗+对空混编，逼出大招「主控过载」的时机决策（M1 门控：原「储能/超载」教学随电容站移至 M2，见 m2_unlock_schedule）"
     },
     {
       "wave_no": 10,
