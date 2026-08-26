@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test last-watt-rules.test.mjs"
+    "test": "npm --prefix .. test"
   }
 }
