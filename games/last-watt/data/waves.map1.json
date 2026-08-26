@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "source": "docs/GDD-余电.md v1.0 §11 前 5 波教学 / §12 难度曲线 / §8.3 首次登场波；出怪数量与间隔为 [补] 配表初稿",
+  "map_id": "map1_main_plant",
+  "scope": "波 1–10（覆盖 M1 垂直切片）；波 11–20（含波 15 母舰、波 20 利维坦）待 M2 平衡稿补齐",
+  "global_rules": {
+    "reward_formula": "波结束奖励 = wave_no × 5（reward 字段已展开存值）",
+    "early_call_bonus": 0.10,
+    "spawn_semantics": "各 spawn 组并行执行：开波后等待 start_delay_s，然后每 interval_s 从 gate_id 出 1 只，共 count 只",
+    "preview": "下一波预览 UI 直接读下一条 WaveDef 的 spawns 聚合（图标×数量，含对空/拆/疗高亮），不另建数据",
+    "multipliers": "敌人落地 HP 与拆/飞/疗数量按 MapDef.wave_multipliers 处理（图 1 全部 ×1.0，本表即最终值）"
+  },
+  "unlock_schedule": [
+    { "wave": 0, "phase": "deploy", "unlocks": ["mg_rivet"], "teach": "放塔、射程圈；部署期仅机枪" },
+    { "wave": 2, "phase": "end", "unlocks": ["tar_sprayer"], "teach": "减速、涂层、完整度条" },
+    { "wave": 3, "phase": "start", "unlocks": ["generator", "condenser_jet", "hydraulic_breaker"], "teach": "电力、冰碎；供电条首次亮起" },
+    { "wave": 6, "phase": "start", "unlocks": ["flame_thrower"], "teach": "油火：油渍+火焰图纸组合节拍" },
+    { "wave": 8, "phase": "start", "unlocks": ["tesla_coil"], "teach": "导电：水洼旁解锁特斯拉" },
+    { "wave": 9, "phase": "start", "unlocks": ["capacitor_station"], "teach": "储能与超载", "notes": "[补] GDD 未指明电容站解锁波，暂定波 9" }
+  ],
+  "waves": [
+    {
+      "wave_no": 1,
+      "reward": 5,
+      "spawns": [{ "enemy_id": "scavenger_bug", "count": 8, "interval_s": 1.0, "gate_id": "gate_1", "start_delay_s": 0 }],
+      "teach": "必赢局：击杀 = 金币"
+    },
+    {
+      "wave_no": 2,
+      "reward": 10,
+      "spawns": [{ "enemy_id": "swift_rat", "count": 10, "interval_s": 0.7, "gate_id": "gate_1", "start_delay_s": 0 }],
+      "teach": "纯机枪设计上必漏 2–3 只：漏怪只扣完整度和金币，不是死；漏怪时老周吐槽",
+      "script_events": ["laozhou_leak_banter"]
+    },
+    {
+      "wave_no": 3,
+      "reward": 15,
+      "spawns": [
+        { "enemy_id": "scavenger_bug", "count": 4, "interval_s": 1.0, "gate_id": "gate_1", "start_delay_s": 0 },
+        { "enemy_id": "armored_truck", "count": 2, "interval_s": 5.0, "gate_id": "gate_1", "start_delay_s": 3 }
+      ],
+      "teach": "机枪刮痧（护甲 -5 灰字）→ 玩家自己造出冷凝+破碎锤打出第一次冰碎",
+      "script_events": ["first_freeze_slowmo_0_5s", "highlight_breaker_blueprint", "tip_frozen_fears_heavy_hit"]
+    },
+    {
+      "wave_no": 4,
+      "reward": 20,
+      "spawns": [
+        { "enemy_id": "scavenger_bug", "count": 6, "interval_s": 1.0, "gate_id": "gate_1", "start_delay_s": 0 },
+        { "enemy_id": "scout_wasp", "count": 3, "interval_s": 2.5, "gate_id": "gate_1", "start_delay_s": 5 }
+      ],
+      "teach": "对空：3 只侦察蜂直飞核心；建塔菜单对空图标闪烁，机枪即可解题",
+      "script_events": ["blink_anti_air_icons"]
+    },
+    {
+      "wave_no": 5,
+      "reward": 25,
+      "spawns": [
+        { "enemy_id": "scavenger_bug", "count": 10, "interval_s": 0.9, "gate_id": "gate_1b", "start_delay_s": 2 },
+        { "enemy_id": "swift_rat", "count": 6, "interval_s": 0.7, "gate_id": "gate_1b", "start_delay_s": 10 }
+      ],
+      "teach": "改路：侧墙炸开（wave5_breach），赠送免费挖沟并高亮 (5,5)；波末大招充能满",
+      "script_events": ["evt_wave5_breach", "grant_free_dig_highlight_5_5", "ability_full_at_end", "laozhou_master_control_ready"]
+    },
+    {
+      "wave_no": 6,
+      "reward": 30,
+      "spawns": [
+        { "enemy_id": "swift_rat", "count": 12, "interval_s": 0.6, "gate_id": "gate_1", "start_delay_s": 0 },
+        { "enemy_id": "scavenger_bug", "count": 8, "interval_s": 0.9, "gate_id": "gate_1", "start_delay_s": 8 }
+      ],
+      "teach": "油火首秀：快速虫潮喂焦油+火焰；combo 一次性提示条",
+      "script_events": ["tip_oil_fire_once"]
+    },
+    {
+      "wave_no": 7,
+      "reward": 35,
+      "spawns": [
+        { "enemy_id": "scavenger_bug", "count": 8, "interval_s": 0.9, "gate_id": "gate_1", "start_delay_s": 0 },
+        { "enemy_id": "demo_sapper", "count": 2, "interval_s": 8.0, "gate_id": "gate_1", "start_delay_s": 5 },
+        { "enemy_id": "armored_truck", "count": 1, "interval_s": 0, "gate_id": "gate_1", "start_delay_s": 12 }
+      ],
+      "teach": "拆迁单位首秀（图 1 首登场波=7）：目标塔闪黄框，学会切换目标优先级集火"
+    },
+    {
+      "wave_no": 8,
+      "reward": 40,
+      "spawns": [
+        { "enemy_id": "scavenger_bug", "count": 10, "interval_s": 0.8, "gate_id": "gate_1", "start_delay_s": 0 },
+        { "enemy_id": "armored_truck", "count": 2, "interval_s": 6.0, "gate_id": "gate_1", "start_delay_s": 4 },
+        { "enemy_id": "repair_drone", "count": 2, "interval_s": 6.0, "gate_id": "gate_1", "start_delay_s": 5 }
+      ],
+      "teach": "治疗首秀（图 1 首登场波=8）：扳手图标提示集火；水洼旁解锁特斯拉练导电",
+      "script_events": ["tip_conduct_once"]
+    },
+    {
+      "wave_no": 9,
+      "reward": 45,
+      "spawns": [
+        { "enemy_id": "swift_rat", "count": 10, "interval_s": 0.6, "gate_id": "gate_1", "start_delay_s": 0 },
+        { "enemy_id": "armored_truck", "count": 3, "interval_s": 4.0, "gate_id": "gate_1", "start_delay_s": 5 },
+        { "enemy_id": "repair_drone", "count": 2, "interval_s": 5.0, "gate_id": "gate_1", "start_delay_s": 8 },
+        { "enemy_id": "scout_wasp", "count": 4, "interval_s": 2.0, "gate_id": "gate_1", "start_delay_s": 10 }
+      ],
+      "teach": "第一压力峰收口：厚甲+治疗+对空混编，逼出储能/超载决策"
+    },
+    {
+      "wave_no": 10,
+      "reward": 50,
+      "spawns": [
+        { "enemy_id": "scavenger_bug", "count": 12, "interval_s": 0.8, "gate_id": "gate_1", "start_delay_s": 0 },
+        { "enemy_id": "swift_rat", "count": 8, "interval_s": 0.6, "gate_id": "gate_1", "start_delay_s": 10 },
+        { "enemy_id": "demo_sapper", "count": 4, "interval_s": 5.0, "gate_id": "gate_2", "start_delay_s": 3 },
+        { "enemy_id": "armored_truck", "count": 2, "interval_s": 6.0, "gate_id": "gate_2", "start_delay_s": 8 }
+      ],
+      "teach": "重构点：gate_2 炸开（MapDef.active_from_wave=10）+ 拆迁潮成建制走近核短线，旧阵型必有一侧真空",
+      "script_events": ["evt_gate_2_blast_open"]
+    }
+  ],
+  "waves_11_to_20": {
+    "status": "TODO(M2)",
+    "fixed_beats": "波 15 = repair_mothership + 补发挖沟 1；波 16–19 混合大潮；波 20 = leviathan；赏金递减 波11–15 ×0.8、波16+ ×0.6 已在 game_state.defaults.json.rules.bounty_decay"
+  }
+}

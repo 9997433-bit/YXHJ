@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "source": "docs/GDD-余电.md v1.0 §7.1 塔表 / §7.3 combo；数值均为初稿可调",
+  "conventions": {
+    "units": {
+      "cost": "金币",
+      "power_cost": "供电点（常驻占用）",
+      "range": "格（欧氏距离，格中心到格中心）",
+      "damage": "点/次（单发）",
+      "fire_interval": "秒/次",
+      "dps": "点/秒"
+    },
+    "notes_marker": "notes 中标 [补] 的数值 GDD 未给出，为配表初稿，由程序按此实现、由策划回调",
+    "upgrade_semantics": "upgrades 二选一、互斥、每塔只能买一个；overrides 为字段绝对值覆盖（非增量），flags 为布尔开关置真"
+  },
+  "towers": [
+    {
+      "id": "mg_rivet",
+      "name_cn": "铆钉机枪",
+      "milestone": "M1",
+      "cost": 50,
+      "power_cost": 0,
+      "range": 3.0,
+      "damage": 5,
+      "fire_interval": 0.5,
+      "damage_type": "kinetic",
+      "attack_kind": "single_hit",
+      "projectile": true,
+      "targets_air": true,
+      "can_trigger_shatter": false,
+      "tags": ["cheap", "anti_air"],
+      "upgrades": [
+        {
+          "id": "up_mg_twin",
+          "name_cn": "双联",
+          "cost": 90,
+          "overrides": { "damage": 8 },
+          "notes": "DPS 10 -> 16（GDD 给定 DPS，拆为单发 8 / 0.5s）；单发仍 <40，不触发冰碎"
+        },
+        {
+          "id": "up_mg_ap",
+          "name_cn": "穿甲弹",
+          "cost": 120,
+          "flags": ["ignore_armor"],
+          "notes": "无视护甲（装甲运输车 -5/击 失效）"
+        }
+      ],
+      "notes": "唯一使用弹道的塔（GDD §17.2）；range 3.0 为 [补]；升级费 90/120 为 [补]（GDD 区间 90–150）"
+    },
+    {
+      "id": "tar_sprayer",
+      "name_cn": "焦油喷洒器",
+      "milestone": "M1",
+      "cost": 70,
+      "power_cost": 0,
+      "range": 2.5,
+      "damage": 0,
+      "fire_interval": null,
+      "damage_type": "none",
+      "attack_kind": "cell_coater",
+      "targets_air": false,
+      "can_trigger_shatter": false,
+      "cell_coating": {
+        "coating": "oil",
+        "cell_duration_s": 12,
+        "recoat_interval_s": 3,
+        "cells_per_coat": 3,
+        "valid_cell_types": ["road", "diggable_road"],
+        "notes": "每 3s 选射程内剩余油时最短的至多 3 个路面格补涂 [补]；水洼格不可涂油 [补，见 SYSTEMS.md 决策 D7]"
+      },
+      "on_enemy_contact": {
+        "slow_pct_while_on_cell": 0.30,
+        "apply_coating": "oil",
+        "coating_duration_s": 6,
+        "notes": "减速仅在油渍格上生效；油标签离格后残留 6s [补]，供油火反应判定"
+      },
+      "tags": ["slow", "coater"],
+      "upgrades": [
+        {
+          "id": "up_tar_sticky",
+          "name_cn": "黏稠",
+          "cost": 90,
+          "overrides": { "slow_pct_while_on_cell": 0.40 }
+        },
+        {
+          "id": "up_tar_wide",
+          "name_cn": "大范围",
+          "cost": 120,
+          "overrides": { "range": 3.5 },
+          "notes": "「大范围」解释为射程 +1 格 [补]"
+        }
+      ],
+      "notes": "range 2.5 与涂油节奏为 [补]"
+    },
+    {
+      "id": "hydraulic_breaker",
+      "name_cn": "液压破碎锤",
+      "milestone": "M1",
+      "cost": 120,
+      "power_cost": 1,
+      "range": 1.5,
+      "damage": 45,
+      "fire_interval": 2.5,
+      "damage_type": "kinetic",
+      "attack_kind": "single_hit",
+      "projectile": false,
+      "targets_air": false,
+      "can_trigger_shatter": true,
+      "tags": ["heavy_hit", "shatter_trigger"],
+      "upgrades": [
+        {
+          "id": "up_breaker_shockwave",
+          "name_cn": "震荡波",
+          "cost": 150,
+          "overrides": { "splash_radius_cells": 1, "splash_damage_ratio": 1.0 },
+          "notes": "1 格溅射；溅射伤害比例 1.0 为 [补]；溅射部分 attack_kind=splash，不触发冰碎（见 reactions.json）"
+        },
+        {
+          "id": "up_breaker_fastcycle",
+          "name_cn": "快速循环",
+          "cost": 120,
+          "overrides": { "fire_interval": 1.8 }
+        }
+      ],
+      "notes": "单发 45 ≥ 40，是 v1 唯一常驻冰碎触发器（GDD §7.3-1）"
+    },
+    {
+      "id": "condenser_jet",
+      "name_cn": "冷凝喷射塔",
+      "milestone": "M1",
+      "cost": 130,
+      "power_cost": 2,
+      "range": 2.5,
+      "cone_angle_deg": 60,
+      "damage": 0,
+      "fire_interval": 0.5,
+      "damage_type": "none",
+      "attack_kind": "cone_status",
+      "targets_air": false,
+      "can_trigger_shatter": false,
+      "per_tick_applies": [
+        { "counter": "wet_cold", "stacks": 1 },
+        { "coating": "wet", "coating_duration_s": 6 }
+      ],
+      "simultaneous_targets": 1,
+      "tags": ["status", "freeze_source"],
+      "upgrades": [
+        {
+          "id": "up_cond_deepfreeze",
+          "name_cn": "冻结 2.5s",
+          "cost": 120,
+          "overrides": { "frozen_duration_s": 2.5 },
+          "notes": "覆盖该塔造成的冻结时长（基础 2.0s，见 reactions.json）"
+        },
+        {
+          "id": "up_cond_dualnozzle",
+          "name_cn": "双喷口",
+          "cost": 150,
+          "overrides": { "simultaneous_targets": 2 },
+          "notes": "「双喷口」解释为同时喷 2 个目标 [补]"
+        }
+      ],
+      "notes": "无伤害；每 0.5s 对锥内目标 +1 层湿冷并附湿标签（GDD §7.3-1）；range/锥角为 [补]"
+    },
+    {
+      "id": "flame_thrower",
+      "name_cn": "火焰喷射塔",
+      "milestone": "M2",
+      "cost": 140,
+      "power_cost": 2,
+      "range": 2.0,
+      "cone_angle_deg": 60,
+      "damage": 2,
+      "fire_interval": 0.25,
+      "dps_nominal": 8,
+      "damage_type": "fire",
+      "attack_kind": "cone_dot",
+      "targets_air": false,
+      "can_trigger_shatter": false,
+      "cell_interaction": {
+        "sweep_oiled_cell": "cell_coating oil -> fire，火场 5s，过路敌人点燃（见 reactions.json oil_ignite.cell_variant）"
+      },
+      "fire_field_duration_s": 5,
+      "tags": ["dot", "igniter"],
+      "upgrades": [
+        {
+          "id": "up_flame_longburn",
+          "name_cn": "火场延长",
+          "cost": 100,
+          "overrides": { "fire_field_duration_s": 8 }
+        },
+        {
+          "id": "up_flame_range",
+          "name_cn": "射程 +1",
+          "cost": 130,
+          "overrides": { "range": 3.0 }
+        }
+      ],
+      "notes": "持续 8 DPS 拆为 2 伤/0.25s tick [补]；火焰单 tick 恒 <40，永不触发冰碎，只会触发冰火不容反 combo"
+    },
+    {
+      "id": "tesla_coil",
+      "name_cn": "特斯拉线圈",
+      "milestone": "M2",
+      "cost": 200,
+      "power_cost": 4,
+      "range": 2.5,
+      "damage": 25,
+      "fire_interval": 1.5,
+      "damage_type": "shock",
+      "attack_kind": "chain",
+      "chain_jumps": 3,
+      "chain_falloff_per_jump": 0.30,
+      "targets_air": true,
+      "can_trigger_shatter": false,
+      "tags": ["chain", "anti_air", "conduct_source"],
+      "upgrades": [
+        {
+          "id": "up_tesla_chain5",
+          "name_cn": "链 5 跳",
+          "cost": 150,
+          "overrides": { "chain_jumps": 5 }
+        },
+        {
+          "id": "up_tesla_coolrun",
+          "name_cn": "超载后不过热",
+          "cost": 130,
+          "flags": ["no_overheat_after_overload"]
+        }
+      ],
+      "notes": "range 2.5 / 攻速 1.5s 为 [补]；单发 25 <40 不触发冰碎；导电 combo 见 reactions.json"
+    },
+    {
+      "id": "capacitor_station",
+      "name_cn": "电容站",
+      "milestone": "M2",
+      "cost": 160,
+      "power_cost": 0,
+      "damage": 0,
+      "damage_type": "none",
+      "attack_kind": "none",
+      "targets_air": false,
+      "can_trigger_shatter": false,
+      "passive": {
+        "battery_max_bonus": 30,
+        "charge_multiplier": 1.5,
+        "stacking": "battery_max 逐台叠加；charge_multiplier 多台相乘 [补，见 SYSTEMS.md 决策 D9]"
+      },
+      "active_overload": {
+        "battery_cost": 20,
+        "area": "3x3_centered_on_self",
+        "target_filter": "power_cost > 0 且在线的塔",
+        "attack_speed_multiplier": 2.0,
+        "duration_s": 6,
+        "overheat_offline_s": 3
+      },
+      "tags": ["support", "overload_source"],
+      "upgrades": [
+        {
+          "id": "up_cap_longsurge",
+          "name_cn": "超载 8s",
+          "cost": 140,
+          "overrides": { "duration_s": 8 }
+        },
+        {
+          "id": "up_cap_halfheat",
+          "name_cn": "过热减半",
+          "cost": 110,
+          "overrides": { "overheat_offline_s": 1.5 }
+        }
+      ],
+      "notes": "不攻击；超载 = 4 combo 之一，规则同步登记在 reactions.json（GDD §7.2 要求全部 combo 走反应表）"
+    },
+    {
+      "id": "generator",
+      "name_cn": "发电机",
+      "milestone": "M1",
+      "is_building": true,
+      "cost": 100,
+      "power_cost": 0,
+      "power_cap_bonus": 6,
+      "power_cap_bonus_adjacent_fissure": 8,
+      "damage_type": "none",
+      "attack_kind": "none",
+      "targets_air": false,
+      "upgrades": [],
+      "notes": "占 1 个地基格；无升级；地热裂隙相邻加成仅图 3 地形存在时生效（GDD §5.2/§6.2）"
+    }
+  ]
+}

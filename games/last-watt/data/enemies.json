@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "source": "docs/GDD-余电.md v1.0 §8 敌人与 Boss；数值均为初稿可调",
+  "conventions": {
+    "units": { "hp": "点", "speed": "格/秒", "armor_flat": "每次受击减伤（点）", "bounty": "金币", "integrity_damage": "漏怪扣核心完整度（点）" },
+    "armor_rule": "受击伤害 = max(1, 单次伤害 - armor_flat) [补：保底 1，见 SYSTEMS.md 决策 D2]；碎裂与燃烧无视护甲（GDD §8.1）",
+    "leak_rule": "任何敌人抵达核心：扣 integrity_damage 且抢走 10 金币，然后移除该敌人（利维坦除外：抵达即败）",
+    "hp_multiplier": "落地 HP = hp × MapDef.wave_multipliers.enemy_hp",
+    "notes_marker": "notes 中标 [补] 的数值 GDD 未给出，为配表初稿"
+  },
+  "enemies": [
+    {
+      "id": "scavenger_bug",
+      "name_cn": "拾荒虫",
+      "milestone": "M1",
+      "role": "基础",
+      "hp": 30,
+      "speed": 1.0,
+      "armor_flat": 0,
+      "bounty": 4,
+      "integrity_damage": 2,
+      "is_flying": false,
+      "behavior": "walker",
+      "behavior_params": {}
+    },
+    {
+      "id": "swift_rat",
+      "name_cn": "疾行鼠群",
+      "milestone": "M1",
+      "role": "基础·快",
+      "hp": 20,
+      "speed": 1.8,
+      "armor_flat": 0,
+      "bounty": 3,
+      "integrity_damage": 2,
+      "is_flying": false,
+      "behavior": "walker",
+      "behavior_params": {},
+      "notes": "逼玩家上减速（焦油）"
+    },
+    {
+      "id": "armored_truck",
+      "name_cn": "装甲运输车",
+      "milestone": "M1",
+      "role": "基础·厚",
+      "hp": 220,
+      "speed": 0.6,
+      "armor_flat": 5,
+      "bounty": 12,
+      "integrity_damage": 4,
+      "is_flying": false,
+      "behavior": "walker",
+      "behavior_params": {},
+      "notes": "护甲每击 -5（碎裂/燃烧无视），逼 combo；机枪(5 伤)命中飘「-5」灰字、按保底造成 1 伤"
+    },
+    {
+      "id": "scout_wasp",
+      "name_cn": "侦察蜂",
+      "milestone": "M1",
+      "role": "破阵·飞",
+      "hp": 45,
+      "speed": 1.4,
+      "armor_flat": 0,
+      "bounty": 6,
+      "integrity_damage": 4,
+      "is_flying": true,
+      "behavior": "flyer",
+      "behavior_params": {
+        "path": "straight_line_gate_to_core",
+        "notes": "直线飞向核心，无视地形与 flow field；只有 targets_air=true 的塔能索敌"
+      }
+    },
+    {
+      "id": "demo_sapper",
+      "name_cn": "爆破工兵",
+      "aliases_cn": ["拆迁蟹"],
+      "milestone": "M1",
+      "role": "破阵·拆",
+      "hp": 160,
+      "speed": 0.8,
+      "armor_flat": 0,
+      "bounty": 10,
+      "integrity_damage": 4,
+      "is_flying": false,
+      "behavior": "demolisher",
+      "behavior_params": {
+        "tower_scan_range_cells": 2,
+        "self_destruct": {
+          "target": "沿路径行进中，自身 2 格内出现的首个塔（含发电机/电容站）",
+          "tower_offline_s": 10,
+          "kills_self": true,
+          "bounty_on_self_destruct": 0,
+          "notes": "自爆身亡不给赏金 [补，见 SYSTEMS.md 决策 D5]；停机塔保留供电占用"
+        },
+        "destroys_player_bridges": true,
+        "bridge_destruction_rule": "踏上玩家所搭桥格时将其炸回沟壑，工程次数不返还；若炸桥会导致任一（当前或未来）出怪口到核心无通路，则不炸直接通过 [补，见 SYSTEMS.md 决策 D6]"
+      },
+      "notes": "GDD 中「爆破工兵」（§8.1）与「拆迁蟹」（§2.1/§8.3/§12/§15.2）为同一单位，本表统一 id=demo_sapper"
+    },
+    {
+      "id": "repair_drone",
+      "name_cn": "修理无人机",
+      "milestone": "M1",
+      "role": "破阵·疗",
+      "hp": 60,
+      "speed": 1.0,
+      "armor_flat": 0,
+      "bounty": 8,
+      "integrity_damage": 2,
+      "is_flying": false,
+      "behavior": "healer",
+      "behavior_params": {
+        "aura_radius_cells": 2,
+        "heal_per_s": 8,
+        "targets": "光环内所有友军（不含自己）[补：不自疗]"
+      },
+      "ui": { "overhead_icon": "wrench", "notes": "血条上方常驻扳手图标提示集火（GDD §8.1/§14.2）" },
+      "notes": "GDD 未标 is_flying，按地面走路处理（表现层可悬浮）[补，见 SYSTEMS.md 决策 D4]"
+    },
+    {
+      "id": "repair_mothership",
+      "name_cn": "修理母舰",
+      "milestone": "M2",
+      "role": "小 Boss（波 15）",
+      "hp": 900,
+      "speed": 0.5,
+      "armor_flat": 0,
+      "bounty": 60,
+      "integrity_damage": 15,
+      "is_flying": false,
+      "behavior": "boss_mothership",
+      "behavior_params": {
+        "aura_radius_cells": 2,
+        "heal_per_s": 15,
+        "on_death_spawn": { "enemy_id": "repair_drone", "count": 4, "at": "death_cell" }
+      },
+      "notes": "光环半径 2 为 [补]（与修理无人机对齐）"
+    },
+    {
+      "id": "leviathan",
+      "name_cn": "利维坦",
+      "milestone": "M2",
+      "role": "大 Boss（波 20）",
+      "hp": 3000,
+      "speed": 0.4,
+      "armor_flat": 0,
+      "bounty": 0,
+      "integrity_damage": 0,
+      "instant_defeat_on_leak": true,
+      "is_flying": false,
+      "behavior": "boss_leviathan",
+      "behavior_params": {
+        "phases": [
+          {
+            "id": "p1_armor_plates",
+            "while_hp_pct_above": 0.5,
+            "damage_taken_multiplier": 0.5,
+            "shatter_override": { "damage_multiplier": 4.0, "knocks_off_armor_plate": true },
+            "notes": "冰碎对它 ×4 且打落一块装甲板（表现层）；冰碎是解题钥匙但非唯一"
+          },
+          {
+            "id": "p2_sapper_release",
+            "at_hp_pct_below": 0.5,
+            "spawn": { "enemy_id": "demo_sapper", "count_total": 6, "interval_s": 5 },
+            "notes": "沿途释放；interval 5s 为 [补]"
+          },
+          {
+            "id": "p3_overdrive_dash",
+            "at_hp_pct_below": 0.25,
+            "speed_multiplier": 2.0,
+            "immune": ["slow", "frozen", "wet_cold"],
+            "self_damage_per_s": 30,
+            "notes": "免疫减速与冻结（湿冷层也不再累积）；每秒自损 30"
+          }
+        ]
+      },
+      "notes": "抵达核心即失败（唯一例外，UI 明示）；图 3 使用 HP ×1.2 乘区"
+    }
+  ]
+}

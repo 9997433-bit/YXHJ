@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "source": "docs/GDD-余电.md v1.0 §6 双资源经济 / §9 大招 / §10 胜负 / §17.1 GameState；数值初稿可调",
+  "defaults": {
+    "gold": 220,
+    "power_cap": 8,
+    "power_used": 0,
+    "battery": 0,
+    "integrity": 100,
+    "wave_no": 0,
+    "ability_charges": 0,
+    "dig_left": "from MapDef.engineering.dig_quota",
+    "bridge_left": "from MapDef.engineering.bridge_quota"
+  },
+  "limits": {
+    "battery_max_base": 100,
+    "ability_charges_max": 2,
+    "integrity_max": 100
+  },
+  "rules": {
+    "power": {
+      "tower_power_is_permanent": true,
+      "overcap_blocks": ["build_new_tower", "activate_overload"],
+      "disabled_towers_still_occupy_power": true,
+      "notes": "丢区停机塔仍占供电（逼卖塔，GDD §6.3-3）[补，决策 D11]；超上限时已建塔照常运行"
+    },
+    "battery": {
+      "charge_per_idle_power_per_s": 0.25,
+      "idle_power_formula": "max(0, power_cap - power_used)",
+      "capacitor_battery_max_bonus": 30,
+      "capacitor_charge_multiplier": 1.5,
+      "overload_battery_cost": 20
+    },
+    "economy": {
+      "wave_end_reward_formula": "wave_no * 5",
+      "early_wave_bonus_ratio": 0.10,
+      "bounty_decay": [
+        { "from_wave": 11, "to_wave": 15, "multiplier": 0.8 },
+        { "from_wave": 16, "to_wave": 20, "multiplier": 0.6 }
+      ],
+      "sell_refund_ratio": 0.7,
+      "sell_value_formula": "floor(0.7 * (base_cost + purchased_upgrade_cost))",
+      "leak_gold_steal": 10,
+      "dig_cost_gold": 50,
+      "bridge_cost_gold": 80,
+      "bounty_range_note": "击杀赏金 3–12/只，具体值在 enemies.json"
+    },
+    "repair": {
+      "cost_gold": 100,
+      "integrity_gain": 20,
+      "interwave_only": true,
+      "cannot_restore_lost_zones": true,
+      "cap_at_integrity_max": true
+    },
+    "integrity": {
+      "zone_a_threshold": 80,
+      "zone_b_threshold": 50,
+      "defeat_threshold": 0,
+      "thresholds_trigger_once": true,
+      "notes": "跌破阈值即触发对应丢区（效果见 MapDef.zones.on_lost），修复回 80 以上也不撤销"
+    },
+    "victory": {
+      "win_condition": "撑过 20 波",
+      "stars": { "three_at_integrity": 80, "two_at_integrity": 50, "one_above_integrity": 0 },
+      "instant_defeat": ["integrity <= 0", "leviathan 抵达核心"]
+    },
+    "ability_master_overload": {
+      "charge_every_completed_waves": 5,
+      "max_stored": 2,
+      "effect_towers": { "scope": "全场 power_cost>0 且在线的塔", "attack_speed_multiplier": 2.0, "duration_s": 6, "battery_cost": 0, "causes_overheat": false },
+      "effect_enemies": { "emp_stun_s": 1.5, "scope": "全场敌人（含飞行与 Boss）[补：Boss 是否免疫 EMP 由平衡稿定，暂不免疫]" },
+      "voice_line": "laozhou_countdown_321"
+    },
+    "engineering": {
+      "construction_time_s": 3,
+      "legality": "任何工程操作后，每个当前或未来激活的出怪口到核心必须仍有通路，否则按钮变红禁止（详见 SYSTEMS.md §3）"
+    }
+  },
+  "notes": "GDD §11 部署期「金币恰好够 2 座（机枪）」与本表 gold=220 冲突，未裁决，见 SYSTEMS.md 决策 D1；v1 无英雄，本表不含附录 A 任何字段"
+}

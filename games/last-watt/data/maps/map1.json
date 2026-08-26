@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "source": "docs/GDD-余电.md v1.0 §5 地图与改路 / §10 丢区 / §11 教学；灰盒初稿，格局可调但需保留各教学点",
+  "id": "map1_main_plant",
+  "name_cn": "主厂房",
+  "grid_size": [20, 12],
+  "coordinates": "cell=[x,y]；x 0–19 西→东，y 0–11 北→南；terrain_rows[y] 为该行 20 字符",
+  "legend": {
+    ".": { "terrain": "wasteland", "walkable": false, "buildable": false, "diggable": false, "bridgeable": false, "notes": "废土/杂物，纯装饰" },
+    "B": { "terrain": "foundation", "walkable": false, "buildable": true, "diggable": false, "bridgeable": false, "notes": "地基" },
+    "R": { "terrain": "road", "walkable": true, "buildable": false, "diggable": false, "bridgeable": false },
+    "D": { "terrain": "diggable_road", "walkable": true, "buildable": false, "diggable": true, "bridgeable": false, "notes": "可挖路段（路面+软土重叠）；挖后变沟壑 G" },
+    "S": { "terrain": "soft_earth", "walkable": false, "buildable": false, "diggable": true, "bridgeable": false, "notes": "软土；挖后变沟壑 G（沟壑可再搭桥成路，即 130 金造 1 格新路）" },
+    "G": { "terrain": "gully", "walkable": false, "buildable": false, "diggable": false, "bridgeable": true, "notes": "沟壑；搭桥后变路面（桥格带 is_player_bridge 标记，可被爆破工兵炸回沟壑）" },
+    "W": { "terrain": "puddle_road", "walkable": true, "buildable": false, "diggable": false, "bridgeable": false, "notes": "水洼路面：敌人踩过附「湿」涂层 6s；不可被涂油 [补，决策 D7]" },
+    "L": { "terrain": "locked_road", "walkable": false, "buildable": false, "diggable": false, "bridgeable": false, "notes": "闸门封锁路：完整度 ≤50 丢 B 区时开启为 road（事件 zone_b_floodgate）" },
+    "E": { "terrain": "event_sealed", "walkable": false, "buildable": false, "diggable": false, "bridgeable": false, "notes": "侧墙封锁格：波 5 演出炸开（事件 wave5_breach）后按 event_cells 定义转为 road / diggable_road；开启前不可走不可挖" },
+    "C": { "terrain": "core", "walkable": false, "buildable": false, "notes": "核心；敌人抵达其相邻路面终点即判定漏怪" }
+  },
+  "terrain_rows": [
+    "............BRB.....",
+    "BBBBBBBBBBB.BRBB....",
+    "RRRRRRRRDDRBBRBB....",
+    "BBBEBBBBBBRBBRRRRB..",
+    "BBBEBBBBBBRBSBBBRB..",
+    "EEEEEEEBBBRBSBBBRB..",
+    "BBSSBBEBBBRBSBBBCB..",
+    "BBBBRRRRRRRLLLLLRB..",
+    "BBBBRBBGBBBBBBBBRB..",
+    "..BBRBBGBBBBBBBBRB..",
+    "....RDDRRRWWRRRRRB..",
+    "....BBBBBBBBBBBBB..."
+  ],
+  "core": [16, 6],
+  "gates": [
+    { "id": "gate_1", "name_cn": "主出怪口（西）", "cell": [0, 2], "active_from_wave": 1 },
+    {
+      "id": "gate_1b",
+      "name_cn": "支路出怪口（波 5 演出）",
+      "cell": [0, 5],
+      "active_waves": [5],
+      "enabled_by_event": "wave5_breach",
+      "notes": "GDD §11 波 5：虫群炸开侧墙，出怪口临时切到支路；波 6 起回到 gate_1，支路地形保留"
+    },
+    { "id": "gate_2", "name_cn": "第二出怪口（北，波 10 炸开）", "cell": [13, 0], "active_from_wave": 10, "opening_fx": "blast" }
+  ],
+  "event_cells": [
+    {
+      "event": "wave5_breach",
+      "trigger": { "type": "wave_start", "wave": 5 },
+      "cells": [
+        { "cell": [0, 5], "becomes": "road" },
+        { "cell": [1, 5], "becomes": "road" },
+        { "cell": [2, 5], "becomes": "road" },
+        { "cell": [3, 5], "becomes": "road" },
+        { "cell": [4, 5], "becomes": "diggable_road" },
+        { "cell": [5, 5], "becomes": "diggable_road" },
+        { "cell": [6, 5], "becomes": "diggable_road" },
+        { "cell": [6, 6], "becomes": "road" },
+        { "cell": [3, 3], "becomes": "road" },
+        { "cell": [3, 4], "becomes": "road" }
+      ],
+      "notes": "开启后支路 (0,5)→(6,5)→(6,6)→(6,7) 是 gate_1 系敌人的捷径（绕开北侧主杀伤区）；教学赠送的免费挖沟推荐格 (5,5) 切断它，怪被引回 (3,5)→(3,3)→(3,2) 汇入主路"
+    },
+    {
+      "event": "zone_b_floodgate",
+      "trigger": { "type": "integrity_below", "value": 50 },
+      "cells": [
+        { "cell": [11, 7], "becomes": "road" },
+        { "cell": [12, 7], "becomes": "road" },
+        { "cell": [13, 7], "becomes": "road" },
+        { "cell": [14, 7], "becomes": "road" },
+        { "cell": [15, 7], "becomes": "road" }
+      ],
+      "notes": "丢 B 变电区惩罚：原被闸门封锁的路打开（GDD §10）——(10,7) 直通 (16,7)，敌人跳过西侧大回环，本局不可关闭"
+    }
+  ],
+  "zones": [
+    {
+      "id": "zone_a",
+      "name_cn": "A 变电区（东北）",
+      "lost_below_integrity": 80,
+      "cells": [[11, 3], [12, 3], [17, 3], [11, 4], [13, 4], [14, 4], [15, 4], [17, 4], [11, 5], [13, 5], [14, 5], [15, 5], [17, 5]],
+      "on_lost": { "power_cap_delta": -4, "disable_towers_in_zone": true, "forbid_build_in_zone": true },
+      "notes": "覆盖 gate_2 走廊两侧地基——丢 A 区直接削弱波 10 后的北线防御"
+    },
+    {
+      "id": "zone_b",
+      "name_cn": "B 变电区（东南）",
+      "lost_below_integrity": 50,
+      "cells": [[12, 8], [13, 8], [14, 8], [15, 8], [12, 9], [13, 9], [14, 9], [15, 9]],
+      "on_lost": { "power_cap_delta": -6, "disable_towers_in_zone": true, "forbid_build_in_zone": true, "open_event": "zone_b_floodgate" },
+      "notes": "紧邻其供电的闸门路（L 格）；其余所有地基属常规区 zone_main，永不丢失"
+    }
+  ],
+  "engineering": {
+    "dig_quota": 3,
+    "bridge_quota": 2,
+    "dig_cost_gold": 50,
+    "bridge_cost_gold": 80,
+    "construction_time_s": 3,
+    "dig_cell_passable_during_construction": true,
+    "grants": [
+      { "wave": 5, "type": "dig", "count": 1, "free": true, "recommended_cell": [5, 5], "notes": "教学赠送，不占配额、不花金币，高亮推荐格（GDD §11 波 5）" },
+      { "wave": 15, "type": "dig", "count": 1, "notes": "波 15 补发（GDD §5.2）" }
+    ]
+  },
+  "wave_multipliers": {
+    "enemy_hp": 1.0,
+    "weight_fly_heal": 1.0,
+    "weight_demolisher": 1.0
+  },
+  "first_appearance_waves": { "flyer": 4, "demolisher": 7, "healer": 8 },
+  "boss_waves": { "mini": 15, "final": 20 },
+  "tutorial_hints": {
+    "deploy_highlight_cells": [[1, 1], [2, 3]],
+    "notes": "部署期两个发光地基格，紧贴北路首段；GDD §11 称部署期「金币恰好够 2 座」与 §6.1 起始金币 220 冲突，本表不裁决，见 SYSTEMS.md 决策 D1"
+  },
+  "layout_notes": {
+    "main_path": "gate_1(0,2) → 东行 2 行至 (10,2) → 南下 10 列至 (10,7) → 西行 7 行至 (4,7) → 南下 4 列至 (4,10) → 东行 10 行至 (16,10) → 北上 16 列至 (16,7) → 核心 (16,6)；步行约 40 格",
+    "gate_2_path": "(13,0) → (13,3) → 东行至 (16,3) → 南下至核心；约 9 格的近核短线，制造波 10「一侧真空」重构点（与主路仅在核心相接）",
+    "water_puddles": "少量水洼 = (10,10),(11,10)，其四邻地基 (10,9),(11,9),(10,11),(11,11) 即波 8 特斯拉教学位",
+    "gully": "1 条沟壑 = (7,8),(7,9)：恰好 2 格 = 全部搭桥配额；架通后 (7,7)→(7,10) 成捷径，把敌人提前引进水洼+特斯拉杀伤区（也会被爆破工兵炸）",
+    "diggable_roads": "共 7 格：(8,2),(9,2) 北路（需支路开通后才挖得合法）；(4,5),(5,5),(6,5) 支路捷径；(5,10),(6,10) 南路（需先架好 (7,8),(7,9) 桥才挖得合法）——合法性由寻路校验自动裁决",
+    "soft_earth": "5 格：(2,6),(3,6),(12,4),(12,5),(12,6)，可挖成沟壑再搭桥自造新路"
+  }
+}

@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "source": "docs/GDD-余电.md v1.0 §7.2 状态标签规则 / §7.3 四个 combo；数据驱动，禁止硬编码分支（§17.2-5）",
+  "status_model": {
+    "notes": "每个敌人身上的状态 = 1 个涂层槽 + 1 个反应态槽 + 若干计数器/计时器。全部走本表，禁止 if-else 写死。",
+    "coating_slot": {
+      "exclusive": true,
+      "overwrite_rule": "后者覆盖前者（湿/油互斥，GDD §7.2）",
+      "types": {
+        "wet": {
+          "name_cn": "湿",
+          "duration_s": 6,
+          "sources": ["condenser_jet 喷雾", "踩过水洼格（W）"],
+          "vfx_hint": "脚下滴水 + 表面高光上调"
+        },
+        "oil": {
+          "name_cn": "油",
+          "duration_s": 6,
+          "sources": ["踩中油渍格（焦油喷洒器铺设）"],
+          "notes": "离开油渍格后残留 6s 为 [补]；被点燃后油涂层不消耗，燃烧只刷新不叠加"
+        }
+      }
+    },
+    "reaction_slot": {
+      "exclusive": true,
+      "mutual_clear": true,
+      "notes": "冻/燃互斥且互相清除（GDD §7.2）：施加其一会先移除另一个",
+      "types": {
+        "frozen": {
+          "name_cn": "冻",
+          "duration_s": 2.0,
+          "duration_override_by_source_upgrade": { "up_cond_deepfreeze": 2.5 },
+          "speed_multiplier": 0.0,
+          "on_remove_any_reason": { "apply_counter": "freeze_immunity" },
+          "notes": "移除途径：自然到时 / 冰碎 / 火焰解冻——三者一律触发 3s 免疫（防无限冻，GDD §7.3-1）",
+          "vfx_hint": "材质切冰壳 + 12 粒霜花"
+        },
+        "burning": {
+          "name_cn": "燃",
+          "duration_s": 4,
+          "dps": 8,
+          "tick_interval_s": 0.5,
+          "ignores_armor": true,
+          "refresh_not_stack": true,
+          "notes": "tick 0.5s（每 tick 4 伤）为 [补] 实现细节；总量恒 8/s×4s"
+        }
+      }
+    },
+    "counters": {
+      "wet_cold": {
+        "name_cn": "湿冷（层）",
+        "max_stacks": 3,
+        "stack_decay_s": 2.0,
+        "blocked_by": ["freeze_immunity"],
+        "on_full": { "apply_reaction": "frozen", "clear_stacks": true },
+        "notes": "单层 2s 无新叠加即衰减 1 层为 [补]；叠满 3 层立即冻结并清零层数；P3 利维坦免疫"
+      },
+      "freeze_immunity": {
+        "name_cn": "冻结免疫",
+        "duration_s": 3,
+        "blocks": ["wet_cold", "frozen"],
+        "notes": "免疫期内湿冷层无法累积、也不能被直接施加冻结；不影响湿涂层（导电仍可用）"
+      }
+    },
+    "cell_coatings": {
+      "notes": "格子涂层与敌人涂层分开存储（Cell.coating，GDD §17.1）",
+      "oil_cell": { "duration_s": 12, "on_enemy_on_cell": { "slow_pct": 0.30, "apply_coating": "oil" } },
+      "fire_cell": { "duration_s": 5, "on_enemy_on_cell": { "apply_reaction": "burning" }, "notes": "时长可被 up_flame_longburn 覆盖为 8s" }
+    }
+  },
+  "hit_metadata_contract": {
+    "notes": "战斗系统每次结算伤害必须携带以下元数据，反应表才可判定",
+    "fields": {
+      "damage_type": "kinetic | fire | shock | none",
+      "attack_kind": "single_hit | cone_dot | chain | splash | none",
+      "base_damage_per_hit": "本次单发原始伤害（未过护甲、未过乘区）",
+      "can_trigger_reactions": "布尔；冰碎溅射等衍生伤害置 false，防连锁",
+      "source_tower_id": "用于读取升级覆盖值（如冻结时长）"
+    }
+  },
+  "evaluation_order": ["fire_thaw", "ice_shatter", "oil_ignite", "conduct"],
+  "evaluation_notes": "同一次命中按此顺序自上而下匹配，命中一行即停（fire_thaw 与 ice_shatter 互斥于 damage_type；oil_ignite 与前两行互斥于目标反应态）。conduct 在攻击发起层（索敌后、结算前）判定，不占用命中匹配。",
+  "reactions": [
+    {
+      "id": "ice_shatter",
+      "name_cn": "冰碎",
+      "combo_index": 1,
+      "trigger": {
+        "event": "on_hit",
+        "attack_kind": "single_hit",
+        "min_base_damage_per_hit": 40,
+        "requires": { "can_trigger_reactions": true }
+      },
+      "target_requires": { "reaction_slot": "frozen" },
+      "effects": [
+        { "type": "replace_hit", "damage_multiplier": 2.5, "ignore_armor": true },
+        {
+          "type": "splash",
+          "radius_cells": 1,
+          "damage": "same_as_final_trigger_damage",
+          "ignore_armor": true,
+          "can_trigger_reactions": false,
+          "affects": "半径内所有敌人（含飞行）[补：溅射可及飞行单位，见 SYSTEMS.md 决策 D3]"
+        },
+        { "type": "remove_reaction", "reaction": "frozen" }
+      ],
+      "boss_overrides": { "leviathan.p1_armor_plates": { "damage_multiplier": 4.0, "knocks_off_armor_plate": true } },
+      "feedback": {
+        "hitstop_ms": 60,
+        "screen_flash": "white_1_frame",
+        "sfx": "sfx_combo_ice_shatter",
+        "vfx": "vfx_ice_shatter_24_shards",
+        "decal": "frost_mark_3s",
+        "first_time_tip_cn": "碎裂！冻结的敌人怕重击"
+      },
+      "notes": "移除 frozen 会经 on_remove_any_reason 自动施加 freeze_immunity 3s。v1 常驻触发器：液压破碎锤(45)；主控过载/超载不改单发伤害，不影响触发集合。"
+    },
+    {
+      "id": "fire_thaw",
+      "name_cn": "冰火不容（反 combo）",
+      "combo_index": null,
+      "trigger": { "event": "on_hit", "damage_type": "fire" },
+      "target_requires": { "reaction_slot": "frozen" },
+      "effects": [
+        { "type": "remove_reaction", "reaction": "frozen" },
+        { "type": "modify_hit", "damage_multiplier": 0.5 }
+      ],
+      "feedback": { "first_time_tip_cn": "冰火不容：火焰会解冻目标且伤害减半" },
+      "notes": "教学用反 combo（GDD §7.3-2）；不计入 4 combo，但同表数据驱动。评估顺序在 ice_shatter 之前，且火焰单 tick <40 天然不满足冰碎条件。"
+    },
+    {
+      "id": "oil_ignite",
+      "name_cn": "油火",
+      "combo_index": 2,
+      "trigger": { "event": "on_hit", "damage_type": "fire" },
+      "target_requires": { "coating_slot": "oil" },
+      "effects": [
+        { "type": "apply_reaction", "reaction": "burning", "refresh_not_stack": true },
+        { "type": "consume_coating", "value": false, "notes": "油涂层不消耗，重复命中仅刷新燃烧时长" }
+      ],
+      "cell_variant": {
+        "trigger": "火焰锥扫过带 oil 涂层的格子",
+        "effects": [{ "type": "set_cell_coating", "coating": "fire_cell", "duration_s": 5 }],
+        "notes": "火场时长读火焰塔 fire_field_duration_s（升级可至 8s）；过路敌人经 fire_cell.on_enemy_on_cell 点燃"
+      },
+      "feedback": { "sfx": "sfx_combo_ignite", "screen_flash": "orange_small", "vfx": "vfx_burning_loop_4s" },
+      "notes": "燃烧无视护甲（GDD §8.1）；施加 burning 时若目标为 frozen，会先走 fire_thaw 行（评估顺序保证）"
+    },
+    {
+      "id": "conduct",
+      "name_cn": "导电",
+      "combo_index": 3,
+      "trigger": { "event": "on_attack", "attack_kind": "chain", "check_target": "primary" },
+      "target_requires": { "coating_slot": "wet" },
+      "effects": [
+        { "type": "chain_jumps_add", "value": 2 },
+        { "type": "chain_falloff_override", "value": 0.0 }
+      ],
+      "feedback": { "vfx": "arc_thick_teal_forked", "chain_targets_flash_same_frame": true, "sfx": "sfx_combo_conduct" },
+      "notes": "判定时点：特斯拉锁定首目标瞬间检查其 wet 涂层；成立则整条链增强（基础 3 跳→5 跳；链5跳升级→7 跳），全链伤害不衰减 [补：以首目标判定，见 SYSTEMS.md 决策 D8]"
+    },
+    {
+      "id": "overload",
+      "name_cn": "超载",
+      "combo_index": 4,
+      "trigger": {
+        "event": "player_activate",
+        "source": "capacitor_station",
+        "battery_cost": 20,
+        "blocked_when": ["battery < 20", "power_used > power_cap [补，见 SYSTEMS.md 决策 D10]", "自身处于过热停机"]
+      },
+      "target": { "area": "3x3_centered_on_source", "filter": "power_cost > 0 且在线（未停机/未断电区）的塔" },
+      "effects": [
+        { "type": "buff", "attack_speed_multiplier": 2.0, "duration_s": 6 },
+        { "type": "then_overheat", "offline_s": 3, "skipped_if_flag": "no_overheat_after_overload" }
+      ],
+      "feedback": { "vfx": "tower_glow_blue_to_red + 扩散电磁环", "sfx": "sfx_overload_surge + 结束跳闸声", "end_vfx": "过热白蒸汽 1s" },
+      "notes": "duration/overheat 可被电容站升级覆盖（8s / 1.5s）；攻速翻倍不改变单发伤害，故不影响冰碎触发集合；大招「主控过载」复用本行 effects 但全场生效、不耗储能、不过热（见 game_state.defaults.json ability）"
+    }
+  ]
+}
