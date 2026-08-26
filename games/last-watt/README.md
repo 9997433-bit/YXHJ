@@ -12,7 +12,7 @@
 npm install && npm run dev
 ```
 
-终端会打印本地地址（默认 <http://localhost:5173/>），浏览器打开即可看到运行中的引擎脚手架。
+终端会打印本地地址（默认 <http://localhost:5173/>），浏览器打开就是**图 1 的可玩灰盒切片**：点格造塔、开波、敌人沿流场走路、冷凝冻住之后破碎锤砸出冰碎。玩法见下一节。
 
 > 需要 **Node.js ≥ 20.19** 与支持 **WebGL2** 的浏览器（Chrome 56+ / Edge / Firefox 51+ / Safari 15+，且开启硬件加速）。
 > 若 WebGL2 不可用，页面会显示中英文双语的启动失败面板与排查步骤，而不是一块黑屏。
@@ -33,6 +33,65 @@ npm install && npm run dev
 |---|---|
 | `/src/vfx/demo/index.html` | VFX Gym：只跑粒子与 HUD，不启动引擎；`?t=1.2` 定帧截图 |
 | `/src/vfx/demo/integration.html` | 引擎接线：真 Engine + 后处理 + VFX + HUD，战斗事件由脚本假扮；`?t=2.8` 定帧截图 |
+| `/src/engine/demo/index.html` | 引擎独立试验台：自发光测试体 + 调试 HUD，用来单独对照 Bloom 与相机机位 |
+
+---
+
+## 试玩：图 1 灰盒切片
+
+`npm run dev` 打开后直接可玩，不需要任何开关。开局 220 金、8 电、完整度 100，10 波。
+
+### 键位
+
+| 操作 | 作用 |
+|---|---|
+| `1`–`5` / 点下方建造条 | 选蓝图（铆钉机枪 / 焦油喷洒器 / 冷凝喷射塔 / 液压破碎锤 / 发电机） |
+| 左键点格 | 在高亮的合法格上放塔；非法点击不解除武装，只在老周的对讲框里说明原因 |
+| 左键点已有塔 | 打开右侧检视面板（状态 / 占电 / 射程 / 累计伤害 / 卖出返还） |
+| 右键 / `Esc` | 取消当前武装或选中 |
+| 空格 | 开波；波次进行中再按是提前开下一波，拿 +10% 赏金 |
+| `D` / `B` | 挖沟 / 搭桥（各有配额，合法格会高亮） |
+| `Q` | 主控过载 |
+| `Z` / 滚轮 | 两档缩放 |
+| `G` | 调试加 400 金 |
+| `H` | 收起左上角的调试计数条 |
+
+### 三十秒看到冰碎
+
+冰碎的判定是「**冻结中**的敌人吃到单发 ≥40 伤害」（`combat/data/reactions.ts` 的 `ice_shatter` 行），
+所以两座塔的**先后顺序**是有讲究的——冷凝要在敌人**先**经过的那一侧：
+
+1. `G` 拿够钱（冷凝 130 + 破碎锤 120，开局的 220 金买不下这一对）。
+2. 按 `3`，点 **(5, 1)** —— 主出怪口在西侧 (0,2)，第 2 行向东走，所以冷凝放在靠西的格子。
+3. 按 `4`，点 **(6, 1)** —— 破碎锤紧挨在冷凝的下游，射程 1.5 格刚好压住路面。
+4. 空格开波。虫子先被喷成湿冷、叠满 3 层结冰，再走进锤子的射程里挨一锤：
+   白闪 + 60ms 顿帧 + 冰晶四散 + 地面霜痕，HUD 顶上弹出「碎裂！冻结的敌人怕重击」。
+
+一波 8 只里大概能看到 1–2 次：冻结只有 2 秒，锤子的挥击周期不一定落在窗口里，
+而且锤子按「首位最强」选敌，前面还有没冻住的目标时会先打那个。想多看几次就多摆几台锤子。
+
+### 左上角那两个数
+
+`fps` 是墙钟帧率，`sim hz` 是每墙钟秒实际跑掉的定步长次数。**`sim hz` 应该是 60**；
+明显更低说明帧率掉到了循环的追帧上限（`fixedDelta × maxSubSteps` = 12 fps）以下，
+整局会变成慢动作——这不是逻辑问题，是显卡（或软件光栅化）跟不上。
+
+### 无头验证
+
+浏览器控制台里 `window.__lastWattGame` 挂着 `{ game, overlay }`：
+
+```js
+__lastWattGame.game.diagnostics()   // fps / sim hz / 波次 / 金钱 / 电力 / 塔与敌人数 / 粒子 / 已播 VFX
+__lastWattGame.game.session.commands.buildAt('condenser_jet', 5, 1)
+__lastWattGame.game.session.commands.startWave({ early: false })
+__lastWattGame.game.combat.bus.on('ice_shatter', console.log)
+```
+
+### 这一版里有意偏离数值表的地方
+
+`data/waves.map1.json` 的 `unlock_schedule` 把冷凝与破碎锤锁到第 3 波之后，这对教学是对的，
+对「两分钟内验证冰碎链」是错的。所以切片默认解锁全部 5 个 M1 蓝图，另外给了 `G` 加金键。
+想跑真实解锁节奏：`new Game({ container, unlockAll: false })`。
 
 ---
 
@@ -98,8 +157,15 @@ games/last-watt/
 ├─ vite.config.ts      # 相对 base，@engine 路径别名
 ├─ tsconfig.json
 ├─ src/
+│  ├─ main.ts          # 应用入口：起 Game 与调试计数条，兜底错误屏
+│  ├─ app/             # 五个模块的接线层（只有这一层知道全部五个模块）
+│  │  ├─ game.ts       #   Engine + GameSession + CombatSystem + VFX + HUD 的装配
+│  │  ├─ hudBridge.ts  #   SessionSnapshot → HudState，HUD 回调 → CommandCenter
+│  │  ├─ input.ts      #   指针与键盘 → CommandCenter
+│  │  ├─ config.ts     #   切片的表现常量（建造条、地形起伏、敌人外形）
+│  │  └─ view/         #   棋盘 / 塔 / 敌人的 Three.js 表现
 │  ├─ engine/          # ← 本文档描述的部分（引擎层）
-│  │  ├─ boot.ts       #   入口：建引擎、挂 HUD、启动循环、兜底错误屏
+│  │  ├─ boot.ts       #   引擎独立试验台入口（/src/engine/demo/），不再是产品入口
 │  │  ├─ Engine.ts     #   运行时宿主：场景 / 相机 / 光 / 后处理 / 循环
 │  │  ├─ config.ts     #   全部锁定常量（网格、相机、调色板、光照、Bloom、步长）
 │  │  ├─ index.ts      #   对外 API barrel —— 其他层只从这里 import

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>余电 · 引擎试验台</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #241812;
+        color: #d8cec4;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      #lw-app {
+        position: fixed;
+        inset: 0;
+      }
+      #lw-app > canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+      #lw-fatal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+        padding: 8vh 8vw;
+        background: #150e0a;
+        z-index: 30;
+        overflow: auto;
+      }
+      #lw-fatal[data-visible='true'] {
+        display: flex;
+      }
+      #lw-fatal h1 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: 0.25em;
+        color: #ff3b30;
+      }
+      #lw-fatal pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        line-height: 1.7;
+        opacity: 0.85;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      引擎独立试验台：只起 Engine + 自发光测试体 + 调试 HUD，不碰 gameplay /
+      combat / vfx / ui。`/` 现在是可玩切片（src/main.ts），所以想单独对照
+      Bloom、相机机位与光照时来这一页。键位见 README「键位（调试用）」。
+    -->
+    <div id="lw-app"></div>
+
+    <div id="lw-fatal" role="alert">
+      <h1>引擎启动失败 / ENGINE BOOT FAILED</h1>
+      <pre id="lw-fatal-body"></pre>
+    </div>
+
+    <script type="module" src="../boot.ts"></script>
+  </body>
+</html>
