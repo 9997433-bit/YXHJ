@@ -1,8 +1,10 @@
 /**
  * Upgrade table — the 14 two-choice upgrades of GDD §7.1.
  *
- * Ids and owning tower ids are the primary keys from
- * `games/last-watt/data/towers.json`.
+ * Ids, owning tower ids and prices are all taken from
+ * `games/last-watt/data/towers.json`, which is the tuning source of record
+ * (主调度 Round 2 ruling 3). The self-check diffs every `cost` here against that
+ * file, so a balance pass lands in the JSON and the code follows.
  *
  * Note that three of them (deep freeze, long burn, long overload) retune
  * numbers that belong to *combos*, and they do it by overriding the parameters
@@ -28,7 +30,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.mgArmorPiercing,
     towerId: TOWER_IDS.rivetMg,
     displayName: '穿甲弹',
-    cost: 110,
+    cost: 120,
     description: '无视护甲：装甲运输车不再刮痧。',
     patch: { ignoreArmor: true },
   },
@@ -44,7 +46,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.tarWide,
     towerId: TOWER_IDS.tarSprayer,
     displayName: '大范围',
-    cost: 100,
+    cost: 120,
     description: '油渍覆盖半径 +1 格。',
     patch: { paintRadiusAdd: 1 },
   },
@@ -52,7 +54,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.breakerShockwave,
     towerId: TOWER_IDS.hydraulicBreaker,
     displayName: '震荡波',
-    cost: 130,
+    cost: 150,
     description: '每次重击附带 1 格溅射。',
     patch: { splashRadiusAdd: 1 },
   },
@@ -60,7 +62,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.breakerFastCycle,
     towerId: TOWER_IDS.hydraulicBreaker,
     displayName: '快速循环',
-    cost: 140,
+    cost: 120,
     description: '攻击间隔 2.5s → 1.8s（仍单发 45，冰碎门槛不受影响）。',
     patch: { intervalMul: 0.72 },
   },
@@ -80,7 +82,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.condenserDualNozzle,
     towerId: TOWER_IDS.condenserJet,
     displayName: '双喷口',
-    cost: 130,
+    cost: 150,
     description: '喷雾锥角显著加宽，可同时冻住一整波。',
     patch: { coneHalfAngleAdd: 18, rangeAdd: 0.5 },
   },
@@ -88,7 +90,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.flameLongBurn,
     towerId: TOWER_IDS.flameThrower,
     displayName: '火场延长',
-    cost: 130,
+    cost: 100,
     description: '火场持续 5s → 8s。',
     patch: { paramOverrides: { [REACTION_PARAMS.fireFieldDuration]: 8 } },
   },
@@ -96,7 +98,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.flameRange,
     towerId: TOWER_IDS.flameThrower,
     displayName: '射程 +1',
-    cost: 120,
+    cost: 130,
     description: '喷射距离 +1 格。',
     patch: { rangeAdd: 1 },
   },
@@ -112,7 +114,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.teslaCoolRun,
     towerId: TOWER_IDS.teslaCoil,
     displayName: '超载后不过热',
-    cost: 150,
+    cost: 130,
     description: '超载结束后不进入过热停机。',
     patch: { overheatImmune: true },
   },
@@ -120,7 +122,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.capacitorLongSurge,
     towerId: TOWER_IDS.capacitorStation,
     displayName: '超载 8s',
-    cost: 120,
+    cost: 140,
     description: '超载持续 6s → 8s。',
     patch: { activationParamOverrides: { [REACTION_PARAMS.overloadDuration]: 8 } },
   },
@@ -128,7 +130,7 @@ export const UPGRADE_DEFS: readonly UpgradeDef[] = [
     id: UPGRADE_IDS.capacitorHalfHeat,
     towerId: TOWER_IDS.capacitorStation,
     displayName: '过热减半',
-    cost: 130,
+    cost: 110,
     description: '超载后的过热停机 3s → 1.5s。',
     patch: { activationParamOverrides: { [REACTION_PARAMS.overheatDuration]: 1.5 } },
   },
