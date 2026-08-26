@@ -147,8 +147,63 @@ export { WaveRunner } from './waves/WaveRunner';
 // --- Adapters & façade -----------------------------------------------------
 export type { FlowFieldMovable } from './adapters/terrainQuery';
 export { FlowFieldMovement, GridTerrainQuery, polylineToCore } from './adapters/terrainQuery';
+export type { EnemyRoute, RoutedMovable } from './adapters/routedMovement';
+export { GROUND_ROUTE, RoutedMovement } from './adapters/routedMovement';
 export type { GameplayWorldOptions } from './world';
 export { GameplayWorld, createGameplayWorld } from './world';
+
+// --- Economy (GDD §6, §10) -------------------------------------------------
+export type { EconomyOptions, EconomyRules, EconomySnapshot, PowerContribution } from './economy/Economy';
+export { DEFAULT_ECONOMY, Economy } from './economy/Economy';
+export type { PowerContributionSource } from './economy/contributions';
+export { contributionOf } from './economy/contributions';
+
+// --- Building (GDD §7.1) ---------------------------------------------------
+export type {
+  BuildCheck,
+  BuildRejectionReason,
+  BuildSystemOptions,
+  PlacedTower,
+} from './build/BuildSystem';
+export { BuildSystem } from './build/BuildSystem';
+
+// --- Combat handshake ------------------------------------------------------
+export type {
+  BridgeDestroyedEvent,
+  BuildingEffectsView,
+  CombatBusPort,
+  CombatContentView,
+  CombatEnemyHandle,
+  CombatPort,
+  CombatSpawnOptions,
+  CombatTowerHandle,
+  EnemyKilledEvent,
+  EnemyLeakedEvent,
+  EnemySpawnedEvent,
+  TowerDefView,
+} from './integration/combatPort';
+export type { CombatLinkOptions, DefeatReason, EnemyRecord } from './integration/CombatLink';
+export { CombatLink } from './integration/CombatLink';
+
+// --- Player commands (GDD §14.1) -------------------------------------------
+export type {
+  ButtonState,
+  CommandButtons,
+  CommandCenterOptions,
+  CommandResult,
+  CommandStatus,
+  ToolKind,
+} from './commands/CommandCenter';
+export { CommandCenter } from './commands/CommandCenter';
+
+// --- Session ---------------------------------------------------------------
+export type {
+  BuildMenuItem,
+  GameSessionOptions,
+  RunStatus,
+  SessionSnapshot,
+} from './session/GameSession';
+export { GameSession, createGameSession } from './session/GameSession';
 
 // --- Maps ------------------------------------------------------------------
 export { MAP1_POWERHOUSE } from './maps/map1Powerhouse';

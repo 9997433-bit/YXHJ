@@ -86,11 +86,29 @@ export interface GameplayEventMap {
   zone_lost: { zoneId: string; powerPenalty: number; openedBarrier: string | null };
   barrier_opened: { barrierId: string; cells: CellCoord[] };
 
+  /** A tower or building took a cell (GDD §17.1 `Cell.occupied`). */
+  tower_placed: CellCoord & { towerId: number; defId: string; cost: number; powerCost: number };
+  tower_removed: CellCoord & { towerId: number; defId: string; refund: number };
+  /** Its substation was lost, so it is off until sold (GDD §10, decision D11). */
+  tower_power_changed: CellCoord & { towerId: number; defId: string; powered: boolean };
+  build_rejected: CellCoord & { defId: string; reason: string };
+
+  gold_changed: { gold: number; delta: number; reason: string };
+  power_changed: { used: number; cap: number; deficit: number };
+  integrity_changed: { integrity: number; delta: number; reason: string };
+  ultimate_charged: { charges: number };
+  ultimate_fired: { chargesLeft: number };
+
+  /** The engineering button is armed and waiting for a target cell. */
+  tool_armed: { tool: EngineeringOp | 'build' | null; defId?: string };
+
   wave_started: { wave: number; early: boolean; reward: number };
   wave_spawn: SpawnRequest;
   wave_spawning_complete: { wave: number };
   wave_cleared: { wave: number; reward: number; earlyBonus: number };
   run_complete: { wave: number };
+  /** Integrity hit 0, or the Leviathan reached the core (GDD §10). */
+  run_lost: { reason: 'integrity' | 'leviathan'; wave: number; integrity: number };
 }
 
 export type GameplayEventName = keyof GameplayEventMap;
