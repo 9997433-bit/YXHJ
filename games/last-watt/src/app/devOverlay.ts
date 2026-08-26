@@ -54,6 +54,9 @@ const ROWS: readonly (readonly [string, string])[] = [
   ['particles', 'particles'],
   ['towers', 'towers'],
   ['enemies', 'enemies'],
+  // Empty unless a hotkey has bent the rules. Any pacing or perf claim made
+  // from a run with something in this row is a claim about a different game.
+  ['dev aids', 'devAids'],
 ];
 
 export class DevOverlay {
@@ -77,8 +80,9 @@ export class DevOverlay {
     keys.className = 'lw-keys';
     keys.innerHTML = [
       '1-5 选建造 · 左键放置 · 右键取消',
-      '空格 开波 · D 挖沟 · B 搭桥',
-      'Z 缩放 · G +400 金 · H 隐藏',
+      '空格 开波 · D 挖沟 · B 搭桥 · Q 大招',
+      'P 暂停 · Z 缩放 · H 隐藏',
+      '调试：G +400 金 · U 解锁全图纸',
     ].join('<br>');
     this.root.appendChild(keys);
     document.body.appendChild(this.root);
@@ -115,7 +119,8 @@ export class DevOverlay {
     const snapshot = this.game.diagnostics();
     for (const [label, key] of ROWS) {
       const node = this.values.get(label);
-      const text = String(snapshot[key] ?? '—');
+      const value = snapshot[key];
+      const text = Array.isArray(value) ? (value.join(' ') || '无') : String(value ?? '—');
       if (node && node.textContent !== text) node.textContent = text;
     }
   }

@@ -23,6 +23,11 @@ export interface InputOptions {
   hud: HudBridge;
   /** Playtest helper; see the `G` binding below. */
   onDevGold?: () => void;
+  /** Playtest helper; see the `U` binding below. */
+  onToggleUnlockAll?: () => void;
+  onTogglePause?: () => void;
+  /** Only reachable once the run is decided; see the `R` binding below. */
+  onRestart?: () => void;
 }
 
 export class InputController {
@@ -96,8 +101,12 @@ export class InputController {
     }
 
     switch (event.key.toLowerCase()) {
+      // The same command as the header's 提前开波 button, so it pays the same
+      // +10% bonus. Waves never auto-start (GDD §12: unlimited pause between
+      // waves), so every start is a voluntary early call — the keyboard used to
+      // quietly hand that bonus back while the button kept it.
       case ' ':
-        hud.run(commands.startWave({ early: session.status === 'running' }));
+        hud.run(commands.startWave({ early: true }));
         event.preventDefault();
         return;
       case 'd':
@@ -112,14 +121,27 @@ export class InputController {
       case 'z':
         engine.cameraRig.cycleZoom();
         return;
+      case 'p':
+        this.options.onTogglePause?.();
+        return;
+      case 'r':
+        if (session.finished) this.options.onRestart?.();
+        return;
       case 'escape':
         this.clear();
         return;
-      // Playtest affordance, not a design decision: the condenser and the
-      // breaker cost 250 together against 220 starting gold and a wave-1 payout
-      // of 37, so proving the shatter chain otherwise means grinding first.
+      // Playtest affordance, not a design decision: it tops the wallet up so a
+      // tester can reach a blueprint's price without grinding. It cannot skip
+      // the unlock schedule — that is `U`, and both are reported by
+      // `Game.diagnostics().devAids`.
       case 'g':
         this.options.onDevGold?.();
+        return;
+      // Lifts the unlock schedule for the rest of the run. This is the only way
+      // into the all-blueprints state a player can reach, and the reason the
+      // slice no longer boots into it.
+      case 'u':
+        this.options.onToggleUnlockAll?.();
         return;
       default:
         return;

@@ -56,6 +56,9 @@ export class HudBridge {
 
   private notice: { line: string; id: string; until: number } | null = null;
   private deliveredStatus: RunStatus | null = null;
+  /** Null until the first snapshot seeds it, so the boot state is not "news". */
+  private knownUnlocked: Set<string> | null = null;
+  private readonly unsubscribe: Array<() => void> = [];
 
   constructor(
     container: HTMLElement,
@@ -81,6 +84,15 @@ export class HudBridge {
         this.interaction.selectedTowerId = null;
       },
     });
+
+    // A cleared wave pays out silently otherwise: the gold counter ticks up by
+    // a number the player never asked for and cannot attribute.
+    this.unsubscribe.push(
+      session.events.on('wave_cleared', ({ wave, reward, earlyBonus }) => {
+        const bonus = earlyBonus > 0 ? `（含提前 +${earlyBonus}）` : '';
+        this.notify(`第 ${wave} 波清空，+${reward + earlyBonus} 金${bonus}`, `cleared:${wave}`);
+      }),
+    );
   }
 
   /** Surfaces a refused command; successes are their own feedback. */
@@ -135,10 +147,35 @@ export class HudBridge {
       .filter((item) => M1_SLOTS.has(item.defId))
       .sort((a, b) => (M1_SLOTS.get(a.defId) as number) - (M1_SLOTS.get(b.defId) as number))
       .map(toBuildItem);
+    this.announceUnlocks(state.build);
     state.selectedBuildId = snapshot.selectedBuildId;
     state.inspector = this.inspector();
     state.radio = this.radio(snapshot.status);
     return state;
+  }
+
+  /**
+   * Says a blueprint arrived, the frame it arrives.
+   *
+   * Diffed from the menu rather than driven by a schedule event because the
+   * schedule is not the only thing that opens a slot — the dev hotkey does too,
+   * and both should read the same on screen.
+   */
+  private announceUnlocks(items: readonly BuildItemState[]): void {
+    const unlocked = new Set(items.filter((item) => item.unlocked).map((item) => item.id));
+    if (this.knownUnlocked === null) {
+      this.knownUnlocked = unlocked;
+      return;
+    }
+
+    const fresh = items.filter((item) => item.unlocked && !this.knownUnlocked?.has(item.id));
+    this.knownUnlocked = unlocked;
+    if (fresh.length === 0) return;
+
+    const named = fresh
+      .map((item) => (item.hotkey ? `${item.name}（${item.hotkey}）` : item.name))
+      .join('、');
+    this.notify(`新图纸到货：${named}`, `unlocked:${fresh.map((item) => item.id).join('+')}`);
   }
 
   private inspector(): TowerInspectState | null {
@@ -184,13 +221,16 @@ export class HudBridge {
 
     switch (status) {
       case 'lost':
-        return { speaker: '老周', line: '完整度归零，这局到此为止。刷新页面再来。', id: 'lost' };
+        return { speaker: '老周', line: '完整度归零，这局到此为止。按 R 重开。', id: 'lost' };
       case 'won':
         return { speaker: '老周', line: '十波撑过去了，垂直切片到此为止。', id: 'won' };
       case 'preparing':
+        // Deliberately does not name the condenser or the breaker: on the real
+        // schedule they are three waves away, and pointing at a locked slot is
+        // how a tutorial teaches the player to distrust it.
         return {
           speaker: '老周',
-          line: '点建造项再点地基放塔。冷凝把它冻住，破碎锤一锤下去就是冰碎。',
+          line: '先摆两台铆钉机枪守住进场那段路。空格开波，图纸会一波一波送到。',
           id: 'preparing',
         };
       default:
@@ -199,6 +239,8 @@ export class HudBridge {
   }
 
   dispose(): void {
+    for (const off of this.unsubscribe) off();
+    this.unsubscribe.length = 0;
     this.hud.dispose();
   }
 }
@@ -228,6 +270,7 @@ function toBuildItem(item: {
   powerCost: number;
   targetsAir: boolean;
   unlocked: boolean;
+  unlockWave: number;
 }): BuildItemState {
   return {
     id: item.defId,
@@ -237,6 +280,7 @@ function toBuildItem(item: {
     powerCost: item.powerCost,
     targetsAir: item.targetsAir,
     unlocked: item.unlocked,
+    unlockWave: item.unlockWave,
     ...(HOTKEYS.has(item.defId) ? { hotkey: HOTKEYS.get(item.defId) as string } : {}),
   };
 }

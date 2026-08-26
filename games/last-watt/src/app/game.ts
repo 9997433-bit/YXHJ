@@ -35,6 +35,7 @@ import { M1_BUILD_MENU } from './config';
 import { HudBridge, towerRange } from './hudBridge';
 import { InputController } from './input';
 import { Interaction } from './interaction';
+import { RunOverlay } from './runOverlay';
 import { BoardView } from './view/BoardView';
 import { EnemyView } from './view/EnemyView';
 import { TowerView } from './view/TowerView';
@@ -51,12 +52,21 @@ export interface GameOptions {
   container: HTMLElement;
   autoStart?: boolean;
   /**
-   * Slice deviation, deliberate: `data/waves.map1.json.unlock_schedule` gates
-   * the condenser and the breaker behind wave 3, which is right for the
-   * tutorial and wrong for a two-minute playtest of the shatter chain. Set
-   * false to run the real schedule.
+   * Lifts `data/waves.map1.json.unlock_schedule` for the whole run.
+   *
+   * Off by default: the schedule *is* the tutorial, and a slice that opens with
+   * all five blueprints teaches a pacing the real game never has. Headless
+   * probes that need the shatter chain in one wave pass true; a playtester
+   * reaches the same state with the `U` hotkey, which is announced on screen so
+   * a session running with it can never be mistaken for the default one.
    */
   unlockAll?: boolean;
+  /**
+   * Invoked by the result panel's 重开 button. The assembly layer cannot
+   * restart itself — disposing the engine from inside its own frame callback is
+   * a use-after-free — so `main.ts` owns the teardown and re-boot.
+   */
+  onRestart?: () => void;
 }
 
 export class Game {
@@ -71,6 +81,7 @@ export class Game {
   readonly enemies = new EnemyView();
   readonly hud: HudBridge;
   readonly input: InputController;
+  readonly overlay: RunOverlay;
 
   /** Frames rendered since boot; the headless probe waits on this. */
   frames = 0;
@@ -78,6 +89,11 @@ export class Game {
   private readonly vfxEngine: VfxEngineBridge;
   private readonly vfxCombat: CombatVfxBridge;
   private readonly unsubscribe: Array<() => void> = [];
+
+  private paused = false;
+  private resultDetail: string | null = null;
+  /** Dev aids used this run, so no screenshot can pass for the default pacing. */
+  private readonly devAids = { unlockAll: false, goldGrants: 0 };
 
   private routeVersion = -1;
   private fpsSince = 0;
@@ -88,7 +104,6 @@ export class Game {
 
   constructor(options: GameOptions) {
     const { container } = options;
-    const unlockAll = options.unlockAll !== false;
 
     // The emissive testbed is R1 scaffolding and the engine's `GridView` is a
     // flat control slab; `BoardView` replaces the latter with real relief.
@@ -102,7 +117,6 @@ export class Game {
         wavesJson as unknown as WaveTableJson,
         map.gates.map((gate) => gate.id),
       ),
-      ...(unlockAll ? { isBlueprintUnlocked: (defId: string) => M1_DEF_IDS.has(defId) } : {}),
     });
     this.combat = new CombatSystem({
       terrain: this.session.terrain,
@@ -115,20 +129,32 @@ export class Game {
     this.engine.scene.add(this.board.root, this.towers.root, this.enemies.root);
 
     this.hud = new HudBridge(container, this.session, this.combat, this.interaction);
+    this.overlay = new RunOverlay(container, {
+      ...(options.onRestart ? { onRestart: options.onRestart } : {}),
+    });
     this.input = new InputController({
       engine: this.engine,
       session: this.session,
       interaction: this.interaction,
       hud: this.hud,
-      onDevGold: () => {
-        this.session.economy.earn(DEV_GOLD, 'dev_grant');
-        this.hud.notify('调试：+400 金币', 'dev-gold');
-      },
+      onDevGold: () => this.grantDevGold(),
+      onToggleUnlockAll: () => this.setDevUnlockAll(!this.devAids.unlockAll),
+      onTogglePause: () => this.setPaused(!this.paused),
+      ...(options.onRestart ? { onRestart: options.onRestart } : {}),
     });
+    if (options.unlockAll === true) this.setDevUnlockAll(true);
 
     this.vfxEngine = attachVfxToEngine(this.engine, this.vfx, {
       onImpact: (impact) => this.hud.hud.applyImpact(impact),
     });
+
+    // After the VFX bridge, so a pause wins over the impact director's time
+    // scale instead of being overwritten by it every frame.
+    this.unsubscribe.push(
+      this.engine.onFrameBegin(() => {
+        if (this.paused) this.engine.loop.timeScale = 0;
+      }),
+    );
     this.vfxCombat = connectCombatToVfx(this.combat.bus, this.vfx, {
       mistTowers: [TOWER_IDS.condenserJet],
       onComboFirstSeen: (comboId) => this.hud.showComboTip(comboId),
@@ -189,6 +215,45 @@ export class Game {
     this.engine.stop();
   }
 
+  // ---------------------------------------------------------------------------
+  // Pause and dev aids
+  // ---------------------------------------------------------------------------
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  /**
+   * Freezes the simulation without stopping the loop.
+   *
+   * `engine.stop()` would be the obvious move and is the wrong one: it also
+   * stops rendering, so the HUD, the frame meter and the pause banner itself
+   * all go stale behind a frozen canvas. Zeroing the time scale is the same
+   * mechanism the shatter hit-stop already uses, just held open.
+   */
+  setPaused(paused: boolean): void {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    if (!paused) this.engine.loop.timeScale = 1;
+    this.hud.notify(paused ? '已暂停（P 继续）' : '继续', paused ? 'paused' : 'resumed');
+  }
+
+  /** The `U` hotkey and the `unlockAll` option, which are the same switch. */
+  setDevUnlockAll(enabled: boolean): void {
+    this.devAids.unlockAll = enabled;
+    this.session.build.setUnlockOverride(enabled ? (defId) => M1_DEF_IDS.has(defId) : null);
+    this.hud.notify(
+      enabled ? '调试：解除图纸解锁表' : '调试：恢复真实解锁表',
+      `dev-unlock:${enabled}`,
+    );
+  }
+
+  private grantDevGold(): void {
+    this.devAids.goldGrants += 1;
+    this.session.economy.earn(DEV_GOLD, 'dev_grant');
+    this.hud.notify(`调试：+${DEV_GOLD} 金币`, `dev-gold:${this.devAids.goldGrants}`);
+  }
+
   /** Presentation for one frame, on the simulation's clock. */
   private present(dt: number): void {
     const towers = this.combat.towerList();
@@ -201,6 +266,31 @@ export class Game {
 
     this.hud.tick();
     this.hud.hud.setState(this.hud.build());
+    this.syncOverlay();
+  }
+
+  /**
+   * A finished run outranks a pause: `GameSession.tick` already returns early
+   * once the run is decided, so "paused" would be a lie the player can act on.
+   */
+  private syncOverlay(): void {
+    const status = this.session.status;
+    if (status === 'lost' || status === 'won') {
+      // Frozen at the moment the run ended; re-reading it every frame would
+      // rebuild the whole snapshot for numbers that can no longer change.
+      this.resultDetail ??= this.resultLine(status);
+      this.overlay.show(status, this.resultDetail);
+      return;
+    }
+    this.overlay.show(this.paused ? 'paused' : 'none');
+  }
+
+  private resultLine(status: 'lost' | 'won'): string {
+    const snapshot = this.session.snapshot();
+    const wave = `第 ${snapshot.wave.current} / ${snapshot.wave.total} 波`;
+    return status === 'won'
+      ? `${wave} · 完整度 ${Math.round(snapshot.integrity.value)}`
+      : `${wave} · 核心完整度归零`;
   }
 
   /** Gate-to-core routes, redrawn only when a dig or a breach moves the field. */
@@ -301,7 +391,18 @@ export class Game {
       vfxPlayed: { ...this.vfxCombat.played },
       drawCalls: this.engine.renderer.info.render.calls,
       buildMenu: snapshot.build.map((item) => item.defId),
+      unlocked: snapshot.build.filter((item) => item.unlocked).map((item) => item.defId),
+      paused: this.paused,
+      /** Non-default aids in force. Empty is the only value a perf or pacing report may cite. */
+      devAids: this.devAidsInUse(),
     };
+  }
+
+  private devAidsInUse(): string[] {
+    const aids: string[] = [];
+    if (this.devAids.unlockAll) aids.push('unlockAll');
+    if (this.devAids.goldGrants > 0) aids.push(`gold+${this.devAids.goldGrants * DEV_GOLD}`);
+    return aids;
   }
 
   dispose(): void {
@@ -312,6 +413,7 @@ export class Game {
     this.input.dispose();
     this.vfxCombat.detach();
     this.vfxEngine.detach();
+    this.overlay.dispose();
     this.hud.dispose();
     this.enemies.dispose();
     this.towers.dispose();

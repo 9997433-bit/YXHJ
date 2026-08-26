@@ -46,8 +46,27 @@ function boot(): void {
   const container = document.getElementById('lw-app');
   if (!container) throw new Error('Mount point #lw-app is missing from index.html');
 
-  const game = new Game({ container });
+  // Deferred: the request arrives from a click or a key handler that the frame
+  // callback is still unwinding, and disposing the engine underneath it takes
+  // the renderer down mid-draw.
+  const game = new Game({ container, onRestart: () => window.setTimeout(restart, 0) });
   const overlay = new DevOverlay(game);
+
+  function teardown(): void {
+    window.clearInterval(dismiss);
+    overlay.dispose();
+    game.dispose();
+    delete window.__lastWattGame;
+  }
+
+  function restart(): void {
+    teardown();
+    try {
+      boot();
+    } catch (error) {
+      showFatal(error);
+    }
+  }
 
   // Hold the boot screen until a frame has actually been presented, so a shader
   // compile failure never hides behind a blank canvas.
@@ -63,12 +82,7 @@ function boot(): void {
   );
 
   if (import.meta.hot) {
-    import.meta.hot.dispose(() => {
-      window.clearInterval(dismiss);
-      overlay.dispose();
-      game.dispose();
-      delete window.__lastWattGame;
-    });
+    import.meta.hot.dispose(teardown);
   }
 }
 
