@@ -131,6 +131,11 @@ export class Engine {
     return this.loop.onRender.add(listener);
   }
 
+  /** Subscribe after the draw — where per-frame render counters are final. */
+  onPresent(listener: (event: RenderEvent) => void): () => void {
+    return this.loop.onPresent.add(listener);
+  }
+
   start(): void {
     this.loop.start();
   }

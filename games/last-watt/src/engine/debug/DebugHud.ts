@@ -75,7 +75,9 @@ export class DebugHud {
 
     this.bindKeys();
     this.bindPointer();
-    this.unsubscribers.push(engine.onRender(({ delta }) => this.update(delta)));
+    // Read counters after the draw: on `onRender` they would still be the
+    // previous frame's, because the draw now runs last in the frame protocol.
+    this.unsubscribers.push(engine.onPresent(({ delta }) => this.update(delta)));
   }
 
   private buildRow(label: string): HTMLDivElement {

@@ -39,7 +39,7 @@ function boot(): void {
 
   // Only dismiss the boot screen once a real frame has been presented, so a
   // shader compile failure is never hidden behind a blank canvas.
-  engine.loop.onRender.once(() => {
+  engine.loop.onPresent.once(() => {
     document.getElementById('lw-boot')?.setAttribute('data-hidden', 'true');
   });
 
