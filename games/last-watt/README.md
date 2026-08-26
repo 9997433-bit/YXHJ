@@ -12,7 +12,8 @@
 npm install && npm run dev
 ```
 
-终端会打印本地地址（默认 <http://localhost:5173/>），浏览器打开就是**图 1 的可玩灰盒切片**：点格造塔、开波、敌人沿流场走路、冷凝冻住之后破碎锤砸出冰碎。玩法见下一节。
+终端会打印本地地址（默认 <http://localhost:5173/YXHJ/last-watt/>，带子路径是因为线上 Pages 也走这个前缀；
+想在根路径开发就 `LW_BASE=/ npm run dev`），浏览器打开就是**图 1 的可玩灰盒切片**：点格造塔、开波、敌人沿流场走路、冷凝冻住之后破碎锤砸出冰碎。玩法见下一节。
 
 > 需要 **Node.js ≥ 20.19** 与支持 **WebGL2** 的浏览器（Chrome 56+ / Edge / Firefox 51+ / Safari 15+，且开启硬件加速）。
 > 若 WebGL2 不可用，页面会显示中英文双语的启动失败面板与排查步骤，而不是一块黑屏。
@@ -22,7 +23,7 @@ npm install && npm run dev
 | 命令 | 作用 |
 |---|---|
 | `npm run dev` | Vite 开发服务器，热更新 |
-| `npm run build` | 生产构建到 `dist/`（相对 base，可直接静态托管） |
+| `npm run build` | 生产构建到 `dist/`（base 默认 `/YXHJ/last-watt/`，见 [部署文档](../../docs/DEPLOY-PAGES.md)） |
 | `npm run preview` | 本地预览 `dist/` 构建产物 |
 | `npm run typecheck` | `tsc --noEmit` 全量类型检查（不参与 dev/build 链路） |
 | `npm run selfcheck` | VFX 层无头自检（17 项断言，不需要 GPU，可进 CI） |

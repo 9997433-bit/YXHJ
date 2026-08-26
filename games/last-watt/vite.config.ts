@@ -1,9 +1,12 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 
-// Relative base so `npm run build` output can be opened from any static host / subpath.
+// GitHub Pages serves this game from a per-game subpath so several games can share
+// one Pages site. Override with LW_BASE=/ when serving from a host root.
+const base = process.env.LW_BASE ?? '/YXHJ/last-watt/';
+
 export default defineConfig({
-  base: './',
+  base,
   resolve: {
     alias: {
       '@engine': fileURLToPath(new URL('./src/engine', import.meta.url)),
