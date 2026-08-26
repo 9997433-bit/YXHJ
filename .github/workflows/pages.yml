@@ -2,7 +2,9 @@ name: Deploy games to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    # cursor/pages-** lets a Pages change prove itself before it reaches main;
+    # without a run on the branch there is no way to enable Pages from CI.
+    branches: [main, 'cursor/pages-**']
     paths:
       - 'games/last-watt/**'
       - 'site/**'
@@ -11,35 +13,33 @@ on:
 
 concurrency:
   group: pages-deploy
-  cancel-in-progress: true
-
-permissions:
-  contents: write
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      # write is only for the gh-pages mirror at the end of the job.
+      contents: write
+      pages: write
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          path: src
+      - uses: actions/checkout@v4
 
-      - name: Checkout gh-pages
-        uses: actions/checkout@v4
+      # enablement turns Pages on with the workflow token, so nobody has to open
+      # Settings; it needs pages:write, not repo admin.
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
         with:
-          ref: gh-pages
-          path: pages
-        continue-on-error: true
+          enablement: true
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: src/games/last-watt/package-lock.json
+          cache-dependency-path: games/last-watt/package-lock.json
 
       - name: Build last-watt
-        working-directory: src/games/last-watt
+        working-directory: games/last-watt
         env:
           # Must match the Pages subpath the artifacts are published under.
           LW_BASE: /${{ github.event.repository.name }}/last-watt/
@@ -49,27 +49,50 @@ jobs:
 
       - name: Stage site
         run: |
-          if [ ! -d pages/.git ]; then
-            rm -rf pages
-            mkdir pages
-            git -C pages init -q -b gh-pages
-          fi
+          rm -rf _site
+          mkdir -p _site/last-watt
+          cp -R games/last-watt/dist/. _site/last-watt/
+          cp site/index.html _site/index.html
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      # Kept in step with the artifact so the site still works if the repo owner
+      # points Pages at the gh-pages branch instead of Actions.
+      - name: Mirror to gh-pages
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -rf pages
+          git clone --depth 1 --branch gh-pages \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" pages \
+            || { rm -rf pages; mkdir pages; git -C pages init -q -b gh-pages; }
           # Only this game's directory is replaced; sibling games on gh-pages survive.
           rm -rf pages/last-watt
           mkdir -p pages/last-watt
-          cp -R src/games/last-watt/dist/. pages/last-watt/
-          cp src/site/index.html pages/index.html
+          cp -R _site/last-watt/. pages/last-watt/
+          cp _site/index.html pages/index.html
           touch pages/.nojekyll
-
-      - name: Publish
-        working-directory: pages
-        run: |
+          cd pages
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          if git diff --cached --quiet; then
-            echo 'nothing to publish'
-            exit 0
-          fi
+          git diff --cached --quiet && exit 0
           git commit -m "deploy: ${{ github.sha }}"
-          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:gh-pages
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" HEAD:gh-pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
