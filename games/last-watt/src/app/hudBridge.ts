@@ -34,7 +34,8 @@ import type { Interaction } from './interaction';
 /** How long a rejected command or a wave payout stays on the radio line. */
 const NOTICE_MS = 2600;
 
-const M1_DEF_IDS = new Set(M1_BUILD_MENU.map((entry) => entry.defId));
+/** Def id → slot on the bar. The catalogue's own order is not the hotkey order. */
+const M1_SLOTS = new Map(M1_BUILD_MENU.map((entry, index) => [entry.defId, index]));
 const HOTKEYS = new Map(M1_BUILD_MENU.map((entry) => [entry.defId, entry.hotkey]));
 
 const STATE_LABELS: Record<string, string> = {
@@ -131,7 +132,8 @@ export class HudBridge {
     state.ultimate = snapshot.ultimate;
     state.engineering = snapshot.engineering;
     state.build = snapshot.build
-      .filter((item) => M1_DEF_IDS.has(item.defId))
+      .filter((item) => M1_SLOTS.has(item.defId))
+      .sort((a, b) => (M1_SLOTS.get(a.defId) as number) - (M1_SLOTS.get(b.defId) as number))
       .map(toBuildItem);
     state.selectedBuildId = snapshot.selectedBuildId;
     state.inspector = this.inspector();

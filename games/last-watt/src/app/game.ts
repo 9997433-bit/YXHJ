@@ -80,9 +80,11 @@ export class Game {
   private readonly unsubscribe: Array<() => void> = [];
 
   private routeVersion = -1;
-  private fpsWindow = 0;
+  private fpsSince = 0;
   private fpsFrames = 0;
   private fps = 0;
+  private simTicks = 0;
+  private simHz = 0;
 
   constructor(options: GameOptions) {
     const { container } = options;
@@ -136,9 +138,12 @@ export class Game {
     this.board.syncTerrain(true);
 
     this.unsubscribe.push(
-      this.engine.onFixedUpdate(({ delta }) => this.session.tick(delta)),
+      this.engine.onFixedUpdate(({ delta }) => {
+        this.simTicks += 1;
+        this.session.tick(delta);
+      }),
       this.engine.onRender(({ scaledDelta }) => this.present(scaledDelta)),
-      this.engine.onPresent(({ delta }) => this.measure(delta)),
+      this.engine.onPresent(() => this.measure()),
     );
 
     if (options.autoStart !== false) this.engine.start();
@@ -247,15 +252,30 @@ export class Game {
     this.board.setCursor(hover ? { cx: hover.cx, cy: hover.cy, valid: true, range: 0 } : null);
   }
 
-  private measure(realDt: number): void {
+  /**
+   * Wall clock, not the loop's delta: the loop clamps its delta to
+   * `fixedDelta * maxSubSteps` so nothing can fast-forward the simulation after
+   * a stall, which also means a frame delta can never report worse than 12 fps.
+   * A frame-rate meter that bottoms out at 12 hides exactly the stalls it is
+   * there to catch, and it would hide the sim falling behind 60 Hz with it.
+   */
+  private measure(): void {
     this.frames += 1;
-    this.fpsWindow += realDt;
     this.fpsFrames += 1;
-    if (this.fpsWindow >= 0.5) {
-      this.fps = this.fpsFrames / this.fpsWindow;
-      this.fpsWindow = 0;
-      this.fpsFrames = 0;
+
+    const now = performance.now();
+    if (this.fpsSince === 0) {
+      this.fpsSince = now;
+      return;
     }
+    const window = (now - this.fpsSince) / 1000;
+    if (window < 0.5) return;
+
+    this.fps = this.fpsFrames / window;
+    this.simHz = this.simTicks / window;
+    this.fpsSince = now;
+    this.fpsFrames = 0;
+    this.simTicks = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -267,6 +287,8 @@ export class Game {
     const snapshot = this.session.snapshot();
     return {
       fps: Math.round(this.fps),
+      /** Fixed steps per wall second. Below 60 the run is in slow motion. */
+      simHz: Math.round(this.simHz),
       frames: this.frames,
       status: snapshot.status,
       wave: `${snapshot.wave.current}/${snapshot.wave.total}`,

@@ -1,10 +1,9 @@
 /**
  * Playtest overlay: frame budget, live counters, and the key map.
  *
- * Not `engine/debug/DebugHud`: that one drives itself off `engine.onRender`,
- * which this slice deliberately leaves unfired (see `game.ts`), and its `G`
- * binding collides with the gold grant. Separate id namespace so both can be on
- * screen at once if someone wants to compare.
+ * Not `engine/debug/DebugHud`: that one's `G` binding collides with the gold
+ * grant, and it reports the engine's counters rather than the run's. Separate id
+ * namespace so both can be on screen at once if someone wants to compare.
  */
 
 import type { Game } from './game';
@@ -42,7 +41,17 @@ const CSS = `
 }
 `;
 
-const ROWS = ['fps', 'draws', 'particles', 'towers', 'enemies'] as const;
+/** Overlay label → `Game.diagnostics()` key. */
+const ROWS: readonly (readonly [string, string])[] = [
+  ['fps', 'fps'],
+  // Fixed steps per wall second. 60 is healthy; less means the frame rate fell
+  // under the loop's sub-step ceiling and the whole run is in slow motion.
+  ['sim hz', 'simHz'],
+  ['draws', 'drawCalls'],
+  ['particles', 'particles'],
+  ['towers', 'towers'],
+  ['enemies', 'enemies'],
+];
 
 export class DevOverlay {
   private readonly root = document.createElement('div');
@@ -59,7 +68,7 @@ export class DevOverlay {
     }
 
     this.root.id = 'lw-app-dev';
-    for (const label of ROWS) this.root.appendChild(this.row(label));
+    for (const [label] of ROWS) this.root.appendChild(this.row(label));
 
     const keys = document.createElement('div');
     keys.className = 'lw-keys';
@@ -101,9 +110,9 @@ export class DevOverlay {
 
   private refresh(): void {
     const snapshot = this.game.diagnostics();
-    for (const label of ROWS) {
+    for (const [label, key] of ROWS) {
       const node = this.values.get(label);
-      const text = String(snapshot[label] ?? '—');
+      const text = String(snapshot[key] ?? '—');
       if (node && node.textContent !== text) node.textContent = text;
     }
   }
