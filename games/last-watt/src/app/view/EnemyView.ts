@@ -32,15 +32,21 @@ import { APP_PALETTE, DEFAULT_ENEMY_STYLE, ENEMY_STYLES, type EnemyStyle } from 
 const BAR_WIDTH = 0.62;
 const BAR_HEIGHT = 0.075;
 
+/**
+ * Frozen shell. The emissive is kept low on purpose: at bloom-visible levels the
+ * shell blows out into a white blob and the silhouette stops reading, which
+ * costs more than the glow buys — and the shatter itself needs somewhere
+ * brighter to go.
+ */
 const ICE_SHELL = new MeshStandardMaterial({
-  color: new Color(APP_PALETTE.frost).multiplyScalar(0.5),
+  color: new Color(APP_PALETTE.frost).multiplyScalar(0.62),
   emissive: new Color(APP_PALETTE.frost),
-  emissiveIntensity: 1.15,
-  roughness: 0.25,
+  emissiveIntensity: 0.42,
+  roughness: 0.22,
   metalness: 0.1,
   flatShading: true,
   transparent: true,
-  opacity: 0.92,
+  opacity: 0.9,
 });
 
 const HURT_TINT = new Color(APP_PALETTE.frost);
