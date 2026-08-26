@@ -136,9 +136,11 @@ async function main() {
   const collector = startCollector();
   await collector.listen();
 
+  // detached：npx 会再套一层 sh，只杀 npx 会把 vite 留成孤儿占着端口
   const vite = spawn('npx', ['vite', '--port', String(VITE_PORT), '--strictPort'], {
     cwd: ROOT,
     stdio: 'ignore',
+    detached: true,
   });
 
   let failed = false;
@@ -208,7 +210,11 @@ async function main() {
     }
     console.log(`\n报告：${path.relative(ROOT, outDir)}/shatter-readability.json`);
   } finally {
-    vite.kill('SIGKILL');
+    try {
+      process.kill(-vite.pid, 'SIGKILL');
+    } catch {
+      /* already gone */
+    }
     await collector.close();
   }
 
