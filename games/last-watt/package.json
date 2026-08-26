@@ -13,7 +13,9 @@
     "preview": "vite preview",
     "test": "tsx --test tests/last-watt-rules.test.ts tests/mock-control.test.mjs",
     "typecheck": "tsc --noEmit",
-    "selfcheck": "vite build --ssr src/vfx/selfcheck.run.ts --outDir .selfcheck --logLevel warn && node .selfcheck/selfcheck.run.js"
+    "selfcheck": "vite build --ssr src/vfx/selfcheck.run.ts --outDir .selfcheck --logLevel warn && node .selfcheck/selfcheck.run.js",
+    "selfcheck:audio": "vite build --ssr src/audio/selfcheck.run.ts --outDir .selfcheck/audio --logLevel warn && node .selfcheck/audio/selfcheck.run.js",
+    "probe:shatter": "node src/vfx/demo/readability.probe.mjs"
   },
   "dependencies": {
     "three": "^0.185.1"

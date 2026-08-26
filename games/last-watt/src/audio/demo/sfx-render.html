@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>余电 · 事件音效离线渲染</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #070605;
+        color: #dfe9ef;
+        font-family: system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      四条 M1 事件音效的离线渲染台。
+
+      OfflineAudioContext 跑的是真正的 WebAudio DSP，所以这一页能抓到无头替身
+      抓不到的东西：非法的参数自动化、拼错的滤波器类型、削波。
+      `sfx.probe.mjs` 用无头 Chrome 跑它并对读数下判定。
+    -->
+    <div id="lw-stage"></div>
+    <script type="module" src="./sfxRender.ts"></script>
+  </body>
+</html>

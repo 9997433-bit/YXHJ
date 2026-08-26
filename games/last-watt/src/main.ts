@@ -8,6 +8,7 @@
 
 import { DevOverlay } from './app/devOverlay';
 import { Game } from './app/game';
+import { AudioEngine, connectGameAudio } from './audio';
 
 declare global {
   interface Window {
@@ -15,7 +16,7 @@ declare global {
      * Console handle for playtesting and the headless probe. Distinct from the
      * engine harness's `__lastWatt` so both entry points can coexist.
      */
-    __lastWattGame?: { game: Game; overlay: DevOverlay };
+    __lastWattGame?: { game: Game; overlay: DevOverlay; audio: AudioEngine };
   }
 }
 
@@ -52,12 +53,40 @@ function boot(): void {
   const game = new Game({ container, onRestart: () => window.setTimeout(restart, 0) });
   const overlay = new DevOverlay(game);
 
+  // Audio subscribes to the same two synchronous buses the VFX bridge does, so
+  // a shatter's "咔嚓" is scheduled inside the same event dispatch that emits
+  // its shards — the ≤1 frame the visual bible asks for is 0 frames here.
+  // Nothing is audible until the first gesture; the engine resumes itself on
+  // the first pointerdown or keydown.
+  const audio = new AudioEngine();
+  const audioBridge = connectGameAudio({
+    combat: game.combat.bus,
+    gameplay: game.session.events,
+    audio,
+  });
+
   function teardown(): void {
     window.clearInterval(dismiss);
+    window.removeEventListener('keydown', onMuteKey);
+    audioBridge.detach();
+    audio.dispose();
     overlay.dispose();
     game.dispose();
     delete window.__lastWattGame;
   }
+
+  /**
+   * `M` mutes. It lives here rather than in `InputController` because there is
+   * no settings panel yet and the assembly layer is the only place that owns
+   * the audio engine; move it into the input map when one exists.
+   */
+  function onMuteKey(event: KeyboardEvent): void {
+    if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key.toLowerCase() !== 'm') return;
+    audio.setMuted(!audio.isMuted);
+    console.info(`[last-watt] 音效${audio.isMuted ? '已静音' : '已开启'}`);
+  }
+  window.addEventListener('keydown', onMuteKey);
 
   function restart(): void {
     teardown();
@@ -76,7 +105,7 @@ function boot(): void {
     document.getElementById('lw-boot')?.setAttribute('data-hidden', 'true');
   }, 50);
 
-  window.__lastWattGame = { game, overlay };
+  window.__lastWattGame = { game, overlay, audio };
   console.info(
     `[last-watt] M1 slice online · ${game.engine.gpu} · ${game.engine.describe()}`,
   );
