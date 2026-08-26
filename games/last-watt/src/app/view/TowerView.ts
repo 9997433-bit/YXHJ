@@ -88,6 +88,7 @@ function buildRig(defId: string): TowerRig {
   let punchDir = 1;
 
   switch (defId) {
+    case 'mg_rivet':
     case 'rivet_mg': {
       const body = new Mesh(new BoxGeometry(0.34, 0.26, 0.34), BODY);
       body.position.y = 0.13;
@@ -114,6 +115,7 @@ function buildRig(defId: string): TowerRig {
       turret.add(tank, nozzle, accentMesh);
       break;
     }
+    case 'condenser_jet':
     case 'condenser': {
       const column = new Mesh(new CylinderGeometry(0.2, 0.26, 0.5, 6), BODY);
       column.position.y = 0.25;
@@ -126,6 +128,7 @@ function buildRig(defId: string): TowerRig {
       turret.add(column, head, muzzle);
       break;
     }
+    case 'hydraulic_breaker':
     case 'hydraulic_hammer': {
       const frame = new Mesh(new BoxGeometry(0.44, 0.5, 0.32), BODY);
       frame.position.y = 0.25;
