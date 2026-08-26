@@ -1,0 +1,845 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-26T09:35:14.710Z",
+  "benchmark": {
+    "id": "last-watt-vfx-budget-probe",
+    "version": "2.0.0",
+    "kind": "production-runtime-counters-with-deterministic-demand-model"
+  },
+  "scenario": {
+    "id": "waves-16-19-vfx-mock",
+    "name": "Waves 16–19 mixed-surge VFX budget probe",
+    "source": "bench/scenarios/waves-16-19.json",
+    "fps": 60,
+    "frameCount": 10080,
+    "durationSeconds": 168,
+    "waves": [
+      16,
+      17,
+      18,
+      19
+    ]
+  },
+  "runtime": {
+    "node": "v22.14.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "budgets": {
+    "activeEmitters": 64,
+    "loopingEmitters": 24,
+    "burstEmitters": 40,
+    "gpuParticles": 20000,
+    "dynamicPointLights": 8,
+    "targetFps": 60,
+    "frameTimeMs": 16.667
+  },
+  "result": {
+    "status": "PASS",
+    "budgetControllerVerified": true,
+    "referenceRenderFpsVerified": false,
+    "referenceRenderFpsStatus": "REQUIRES_UNITY_URP_REFERENCE_HARDWARE_CAPTURE",
+    "mockPolicyVerified": true,
+    "productionRuntimeVerified": true
+  },
+  "redlines": [
+    {
+      "id": "active_emitters_lte_64",
+      "passed": true,
+      "actual": 63,
+      "limit": 64,
+      "comparator": "lte"
+    },
+    {
+      "id": "looping_emitters_lte_24",
+      "passed": true,
+      "actual": 24,
+      "limit": 24,
+      "comparator": "lte"
+    },
+    {
+      "id": "burst_emitters_lte_40",
+      "passed": true,
+      "actual": 39,
+      "limit": 40,
+      "comparator": "lte"
+    },
+    {
+      "id": "gpu_particles_lte_20000",
+      "passed": true,
+      "actual": 1575,
+      "limit": 20000,
+      "comparator": "lte"
+    },
+    {
+      "id": "dynamic_point_lights_lte_8",
+      "passed": true,
+      "actual": 8,
+      "limit": 8,
+      "comparator": "lte"
+    },
+    {
+      "id": "protected_event_combo_particle_drops_eq_0",
+      "passed": true,
+      "actual": 0,
+      "limit": 0,
+      "comparator": "eq"
+    },
+    {
+      "id": "wave_coverage_exactly_16_through_19",
+      "passed": true,
+      "actual": [
+        16,
+        17,
+        18,
+        19
+      ],
+      "expected": [
+        16,
+        17,
+        18,
+        19
+      ],
+      "comparator": "deepEqual"
+    },
+    {
+      "id": "three_fire_fields_and_ultimate_share_stress_frame",
+      "passed": true,
+      "actual": {
+        "burning_enemy": 9,
+        "coin_flow": 3,
+        "conductive_chain": 6,
+        "demolition_explosion": 3,
+        "emp_noise": 1,
+        "fire_field": 3,
+        "freeze_bloom": 3,
+        "overload_arc": 12,
+        "shatter": 9,
+        "tesla_chain": 6,
+        "ultimate_ring": 1
+      },
+      "expected": {
+        "fire_field": ">=3",
+        "ultimate_ring": ">=1"
+      },
+      "comparator": "contains"
+    }
+  ],
+  "peaks": {
+    "requested": {
+      "activeEmitters": {
+        "value": 122,
+        "frame": 5889,
+        "wave": 18,
+        "waveSecond": 22.15
+      },
+      "loopingEmitters": {
+        "value": 83,
+        "frame": 5880,
+        "wave": 18,
+        "waveSecond": 22
+      },
+      "burstEmitters": {
+        "value": 39,
+        "frame": 5889,
+        "wave": 18,
+        "waveSecond": 22.15
+      },
+      "gpuParticles": {
+        "value": 3553,
+        "frame": 5889,
+        "wave": 18,
+        "waveSecond": 22.15
+      },
+      "dynamicPointLights": {
+        "value": 23,
+        "frame": 5889,
+        "wave": 18,
+        "waveSecond": 22.15
+      }
+    },
+    "actual": {
+      "activeEmitters": {
+        "value": 63,
+        "frame": 5889,
+        "wave": 18,
+        "waveSecond": 22.15
+      },
+      "loopingEmitters": {
+        "value": 24,
+        "frame": 0,
+        "wave": 16,
+        "waveSecond": 0
+      },
+      "burstEmitters": {
+        "value": 39,
+        "frame": 5889,
+        "wave": 18,
+        "waveSecond": 22.15
+      },
+      "gpuParticles": {
+        "value": 1575,
+        "frame": 8508,
+        "wave": 19,
+        "waveSecond": 21.8
+      },
+      "dynamicPointLights": {
+        "value": 8,
+        "frame": 2622,
+        "wave": 17,
+        "waveSecond": 7.7
+      }
+    }
+  },
+  "policy": {
+    "framesWithEmitterDrops": 10080,
+    "maxEmitterDropsPerFrame": 59,
+    "framesWithEnvironmentDrops": 10080,
+    "maxEnvironmentDropsPerFrame": 42,
+    "framesWithLoopRateReduction": 0,
+    "maxLoopRateReductionsPerFrame": 0,
+    "framesWithPointLightFallback": 306,
+    "maxPointLightFallbacksPerFrame": 15,
+    "framesWithSameTypeLoopLod": 5520,
+    "protectedParticleDrops": 0
+  },
+  "stressEvent": {
+    "id": "m3-firefields-grid-overload-collision",
+    "wave": 18,
+    "atSecond": 22,
+    "globalFrame": 5880,
+    "requestedEffectStarts": {
+      "conductive_chain": 6,
+      "demolition_explosion": 3,
+      "emp_noise": 1,
+      "fire_field": 3,
+      "overload_arc": 12,
+      "shatter": 6,
+      "tesla_chain": 6,
+      "ultimate_ring": 1
+    },
+    "acceptedActiveEffects": {
+      "burning_enemy": 9,
+      "coin_flow": 3,
+      "conductive_chain": 6,
+      "demolition_explosion": 3,
+      "emp_noise": 1,
+      "fire_field": 3,
+      "freeze_bloom": 3,
+      "overload_arc": 12,
+      "shatter": 9,
+      "tesla_chain": 6,
+      "ultimate_ring": 1
+    },
+    "demand": {
+      "activeEmitters": 115,
+      "loopingEmitters": 83,
+      "burstEmitters": 32,
+      "gpuParticles": 3511,
+      "dynamicPointLights": 19
+    },
+    "actual": {
+      "activeEmitters": 56,
+      "loopingEmitters": 24,
+      "burstEmitters": 32,
+      "gpuParticles": 1333,
+      "dynamicPointLights": 8
+    },
+    "policy": {
+      "emitterDrops": 59,
+      "environmentDrops": 36,
+      "loopRateReductions": 0,
+      "pointLightFallbacks": 11,
+      "protectedParticleDrops": 0,
+      "sameTypeLoopLodGroups": 1
+    },
+    "sameFrameAssertions": [
+      {
+        "effect": "fire_field",
+        "requestedAtStressFrame": 3,
+        "passed": true
+      },
+      {
+        "effect": "ultimate_ring",
+        "requestedAtStressFrame": 1,
+        "passed": true
+      },
+      {
+        "effect": "emp_noise",
+        "requestedAtStressFrame": 1,
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "hostCpuDiagnostic": {
+    "scope": "NODE_BUDGET_CONTROLLER_ONLY_NO_GPU_RENDER",
+    "totalProbeTimeMs": 220.313,
+    "meanFrameMs": 0.0217,
+    "p50FrameMs": 0.0192,
+    "p95FrameMs": 0.0309,
+    "p99FrameMs": 0.0488,
+    "maxFrameMs": 2.4038,
+    "targetFrameMs": 16.667,
+    "p95WithinTarget": true,
+    "authoritativeForRenderFps": false
+  },
+  "waves": [
+    {
+      "wave": 16,
+      "durationSeconds": 36,
+      "frameCount": 2160,
+      "peaks": {
+        "requested": {
+          "activeEmitters": {
+            "value": 60,
+            "frame": 231,
+            "wave": 16,
+            "waveSecond": 3.85
+          },
+          "loopingEmitters": {
+            "value": 49,
+            "frame": 0,
+            "wave": 16,
+            "waveSecond": 0
+          },
+          "burstEmitters": {
+            "value": 11,
+            "frame": 231,
+            "wave": 16,
+            "waveSecond": 3.85
+          },
+          "gpuParticles": {
+            "value": 1764,
+            "frame": 231,
+            "wave": 16,
+            "waveSecond": 3.85
+          },
+          "dynamicPointLights": {
+            "value": 5,
+            "frame": 12,
+            "wave": 16,
+            "waveSecond": 0.2
+          }
+        },
+        "actual": {
+          "activeEmitters": {
+            "value": 35,
+            "frame": 231,
+            "wave": 16,
+            "waveSecond": 3.85
+          },
+          "loopingEmitters": {
+            "value": 24,
+            "frame": 0,
+            "wave": 16,
+            "waveSecond": 0
+          },
+          "burstEmitters": {
+            "value": 11,
+            "frame": 231,
+            "wave": 16,
+            "waveSecond": 3.85
+          },
+          "gpuParticles": {
+            "value": 1080,
+            "frame": 231,
+            "wave": 16,
+            "waveSecond": 3.85
+          },
+          "dynamicPointLights": {
+            "value": 5,
+            "frame": 12,
+            "wave": 16,
+            "waveSecond": 0.2
+          }
+        }
+      },
+      "policy": {
+        "framesWithEmitterDrops": 2160,
+        "maxEmitterDropsPerFrame": 25,
+        "framesWithEnvironmentDrops": 2160,
+        "maxEnvironmentDropsPerFrame": 25,
+        "framesWithLoopRateReduction": 0,
+        "maxLoopRateReductionsPerFrame": 0,
+        "framesWithPointLightFallback": 0,
+        "maxPointLightFallbacksPerFrame": 0,
+        "framesWithSameTypeLoopLod": 0,
+        "protectedParticleDrops": 0
+      }
+    },
+    {
+      "wave": 17,
+      "durationSeconds": 40,
+      "frameCount": 2400,
+      "peaks": {
+        "requested": {
+          "activeEmitters": {
+            "value": 73,
+            "frame": 2352,
+            "wave": 17,
+            "waveSecond": 3.2
+          },
+          "loopingEmitters": {
+            "value": 59,
+            "frame": 2160,
+            "wave": 17,
+            "waveSecond": 0
+          },
+          "burstEmitters": {
+            "value": 14,
+            "frame": 2352,
+            "wave": 17,
+            "waveSecond": 3.2
+          },
+          "gpuParticles": {
+            "value": 2126,
+            "frame": 2352,
+            "wave": 17,
+            "waveSecond": 3.2
+          },
+          "dynamicPointLights": {
+            "value": 9,
+            "frame": 2622,
+            "wave": 17,
+            "waveSecond": 7.7
+          }
+        },
+        "actual": {
+          "activeEmitters": {
+            "value": 38,
+            "frame": 2352,
+            "wave": 17,
+            "waveSecond": 3.2
+          },
+          "loopingEmitters": {
+            "value": 24,
+            "frame": 2160,
+            "wave": 17,
+            "waveSecond": 0
+          },
+          "burstEmitters": {
+            "value": 14,
+            "frame": 2352,
+            "wave": 17,
+            "waveSecond": 3.2
+          },
+          "gpuParticles": {
+            "value": 1272,
+            "frame": 2352,
+            "wave": 17,
+            "waveSecond": 3.2
+          },
+          "dynamicPointLights": {
+            "value": 8,
+            "frame": 2622,
+            "wave": 17,
+            "waveSecond": 7.7
+          }
+        }
+      },
+      "policy": {
+        "framesWithEmitterDrops": 2400,
+        "maxEmitterDropsPerFrame": 35,
+        "framesWithEnvironmentDrops": 2400,
+        "maxEnvironmentDropsPerFrame": 31,
+        "framesWithLoopRateReduction": 0,
+        "maxLoopRateReductionsPerFrame": 0,
+        "framesWithPointLightFallback": 12,
+        "maxPointLightFallbacksPerFrame": 1,
+        "framesWithSameTypeLoopLod": 0,
+        "protectedParticleDrops": 0
+      }
+    },
+    {
+      "wave": 18,
+      "durationSeconds": 44,
+      "frameCount": 2640,
+      "peaks": {
+        "requested": {
+          "activeEmitters": {
+            "value": 122,
+            "frame": 5889,
+            "wave": 18,
+            "waveSecond": 22.15
+          },
+          "loopingEmitters": {
+            "value": 83,
+            "frame": 5880,
+            "wave": 18,
+            "waveSecond": 22
+          },
+          "burstEmitters": {
+            "value": 39,
+            "frame": 5889,
+            "wave": 18,
+            "waveSecond": 22.15
+          },
+          "gpuParticles": {
+            "value": 3553,
+            "frame": 5889,
+            "wave": 18,
+            "waveSecond": 22.15
+          },
+          "dynamicPointLights": {
+            "value": 23,
+            "frame": 5889,
+            "wave": 18,
+            "waveSecond": 22.15
+          }
+        },
+        "actual": {
+          "activeEmitters": {
+            "value": 63,
+            "frame": 5889,
+            "wave": 18,
+            "waveSecond": 22.15
+          },
+          "loopingEmitters": {
+            "value": 24,
+            "frame": 4560,
+            "wave": 18,
+            "waveSecond": 0
+          },
+          "burstEmitters": {
+            "value": 39,
+            "frame": 5889,
+            "wave": 18,
+            "waveSecond": 22.15
+          },
+          "gpuParticles": {
+            "value": 1375,
+            "frame": 5889,
+            "wave": 18,
+            "waveSecond": 22.15
+          },
+          "dynamicPointLights": {
+            "value": 8,
+            "frame": 4977,
+            "wave": 18,
+            "waveSecond": 6.95
+          }
+        }
+      },
+      "policy": {
+        "framesWithEmitterDrops": 2640,
+        "maxEmitterDropsPerFrame": 59,
+        "framesWithEnvironmentDrops": 2640,
+        "maxEnvironmentDropsPerFrame": 36,
+        "framesWithLoopRateReduction": 0,
+        "maxLoopRateReductionsPerFrame": 0,
+        "framesWithPointLightFallback": 54,
+        "maxPointLightFallbacksPerFrame": 15,
+        "framesWithSameTypeLoopLod": 2640,
+        "protectedParticleDrops": 0
+      }
+    },
+    {
+      "wave": 19,
+      "durationSeconds": 48,
+      "frameCount": 2880,
+      "peaks": {
+        "requested": {
+          "activeEmitters": {
+            "value": 100,
+            "frame": 8508,
+            "wave": 19,
+            "waveSecond": 21.8
+          },
+          "loopingEmitters": {
+            "value": 78,
+            "frame": 7200,
+            "wave": 19,
+            "waveSecond": 0
+          },
+          "burstEmitters": {
+            "value": 22,
+            "frame": 8508,
+            "wave": 19,
+            "waveSecond": 21.8
+          },
+          "gpuParticles": {
+            "value": 2902,
+            "frame": 8508,
+            "wave": 19,
+            "waveSecond": 21.8
+          },
+          "dynamicPointLights": {
+            "value": 12,
+            "frame": 7284,
+            "wave": 19,
+            "waveSecond": 1.4
+          }
+        },
+        "actual": {
+          "activeEmitters": {
+            "value": 46,
+            "frame": 8508,
+            "wave": 19,
+            "waveSecond": 21.8
+          },
+          "loopingEmitters": {
+            "value": 24,
+            "frame": 7200,
+            "wave": 19,
+            "waveSecond": 0
+          },
+          "burstEmitters": {
+            "value": 22,
+            "frame": 8508,
+            "wave": 19,
+            "waveSecond": 21.8
+          },
+          "gpuParticles": {
+            "value": 1575,
+            "frame": 8508,
+            "wave": 19,
+            "waveSecond": 21.8
+          },
+          "dynamicPointLights": {
+            "value": 8,
+            "frame": 7212,
+            "wave": 19,
+            "waveSecond": 0.2
+          }
+        }
+      },
+      "policy": {
+        "framesWithEmitterDrops": 2880,
+        "maxEmitterDropsPerFrame": 54,
+        "framesWithEnvironmentDrops": 2880,
+        "maxEnvironmentDropsPerFrame": 42,
+        "framesWithLoopRateReduction": 0,
+        "maxLoopRateReductionsPerFrame": 0,
+        "framesWithPointLightFallback": 240,
+        "maxPointLightFallbacksPerFrame": 4,
+        "framesWithSameTypeLoopLod": 2880,
+        "protectedParticleDrops": 0
+      }
+    }
+  ],
+  "notes": [
+    "Production runtime checks load VfxBudget and GpuParticleSystem from src/vfx and read their real snapshot, estimated-alive, and exact-alive counters.",
+    "The waves 16–19 demand forecast remains deterministic; its allocation policy is retained as a model baseline and is not presented as rendered GPU output.",
+    "The production particle probe writes real Three.js buffer attributes headlessly but does not create a WebGL context or verify reference-hardware frame rate.",
+    "Node host CPU timing is diagnostic only and must not be used as proof of GTX 1060 or Steam Deck 60fps.",
+    "Event and combo burst particles are protected; environment emitters are discarded first.",
+    "Point-light requests above eight use additive billboard fallback in the demand model."
+  ],
+  "productionRuntime": {
+    "status": "PASS",
+    "kind": "production-typescript-headless-counters",
+    "loadedModules": {
+      "governor": "src/vfx/budget.ts#VfxBudget",
+      "particleSystem": "src/vfx/GpuParticleSystem.ts#GpuParticleSystem",
+      "publicApi": "src/vfx/index.ts",
+      "loader": "vite-ssr"
+    },
+    "counterSources": {
+      "governor": "VfxBudget.snapshot",
+      "particleEstimate": "GpuParticleSystem.stats.alive",
+      "particleExact": "GpuParticleSystem.countAliveExact()"
+    },
+    "productionBudgets": {
+      "activeEmitters": 64,
+      "loopingEmitters": 24,
+      "burstEmitters": 40,
+      "gpuParticles": 20000,
+      "dynamicPointLights": 8
+    },
+    "checks": [
+      {
+        "id": "production_budget_constants_match_bench_defaults",
+        "passed": true,
+        "actual": {
+          "activeEmitters": 64,
+          "loopingEmitters": 24,
+          "burstEmitters": 40,
+          "gpuParticles": 20000,
+          "dynamicPointLights": 8
+        },
+        "expected": {
+          "activeEmitters": 64,
+          "loopingEmitters": 24,
+          "burstEmitters": 40,
+          "gpuParticles": 20000,
+          "dynamicPointLights": 8
+        },
+        "comparator": "deepEqual"
+      },
+      {
+        "id": "production_particle_capacity_eq_20000",
+        "passed": true,
+        "actual": 20000,
+        "expected": 20000,
+        "comparator": "deepEqual"
+      },
+      {
+        "id": "production_loop_emitter_cap_enforced",
+        "passed": true,
+        "actual": {
+          "accepted": 24,
+          "overflowAccepted": false,
+          "snapshot": 24
+        },
+        "expected": {
+          "accepted": 24,
+          "overflowAccepted": false,
+          "snapshot": 24
+        },
+        "comparator": "deepEqual"
+      },
+      {
+        "id": "production_one_shot_emitter_cap_enforced",
+        "passed": true,
+        "actual": {
+          "accepted": 40,
+          "overflowGrant": 0,
+          "snapshot": 40
+        },
+        "expected": {
+          "accepted": 40,
+          "overflowGrant": 0,
+          "snapshot": 40
+        },
+        "comparator": "deepEqual"
+      },
+      {
+        "id": "production_combined_emitter_cap_lte_64",
+        "passed": true,
+        "actual": 64,
+        "expected": 64,
+        "comparator": "lte"
+      },
+      {
+        "id": "production_emitter_saturation_has_no_budget_violation",
+        "passed": true,
+        "actual": [],
+        "expected": [],
+        "comparator": "deepEqual"
+      },
+      {
+        "id": "production_representative_load_uses_real_particle_count",
+        "passed": true,
+        "actual": {
+          "estimated": 2340,
+          "exact": 2340,
+          "emitted": 2340
+        },
+        "expected": {
+          "estimated": 2340,
+          "exact": 2340,
+          "emitted": 2340
+        },
+        "comparator": "deepEqual"
+      },
+      {
+        "id": "production_representative_load_lte_particle_budget",
+        "passed": true,
+        "actual": 2340,
+        "expected": 20000,
+        "comparator": "lte"
+      },
+      {
+        "id": "production_expired_particles_return_to_zero",
+        "passed": true,
+        "actual": {
+          "estimated": 0,
+          "exact": 0
+        },
+        "expected": {
+          "estimated": 0,
+          "exact": 0
+        },
+        "comparator": "deepEqual"
+      },
+      {
+        "id": "production_particle_pool_reaches_exact_budget",
+        "passed": true,
+        "actual": {
+          "estimated": 20000,
+          "exact": 20000
+        },
+        "expected": {
+          "estimated": 20000,
+          "exact": 20000
+        },
+        "comparator": "deepEqual"
+      },
+      {
+        "id": "production_persistent_particles_drop_at_capacity",
+        "passed": true,
+        "actual": 0,
+        "expected": 0,
+        "comparator": "eq"
+      },
+      {
+        "id": "production_event_particles_remain_protected_at_capacity",
+        "passed": true,
+        "actual": 50,
+        "expected": 50,
+        "comparator": "eq"
+      },
+      {
+        "id": "production_full_pool_has_no_budget_violation",
+        "passed": true,
+        "actual": [],
+        "expected": [],
+        "comparator": "deepEqual"
+      }
+    ],
+    "observations": {
+      "emitterSaturation": {
+        "acceptedLoops": 24,
+        "overflowLoopAccepted": false,
+        "acceptedOneShots": 40,
+        "overflowOneShotGrant": 0,
+        "snapshot": {
+          "aliveParticles": 40,
+          "loopEmitters": 24,
+          "oneShotEmitters": 40,
+          "degrade": 0,
+          "frameMsEma": 16.666666666666668,
+          "droppedRequests": 2
+        },
+        "exactAliveParticles": 40,
+        "violations": []
+      },
+      "representativeLateWaveLoad": {
+        "requestedParticles": 2340,
+        "grantedParticles": 2340,
+        "emittedParticles": 2340,
+        "runtimeEstimatedAliveParticles": 2340,
+        "exactAliveParticles": 2340,
+        "capacity": 20000,
+        "particleStats": {
+          "alive": 2340,
+          "capacity": 20000,
+          "emittedThisFrame": 2340,
+          "droppedThisFrame": 0,
+          "drawCalls": 2
+        },
+        "violations": []
+      },
+      "particleSaturation": {
+        "requestedParticles": 20000,
+        "grantedParticles": 20000,
+        "emittedParticles": 20000,
+        "snapshotBeforePolicyChecks": {
+          "aliveParticles": 20000,
+          "loopEmitters": 0,
+          "oneShotEmitters": 2,
+          "degrade": 0,
+          "frameMsEma": 16.666666666666668,
+          "droppedRequests": 0
+        },
+        "exactAliveParticles": 20000,
+        "persistentGrantAtCapacity": 0,
+        "eventGrantAtCapacity": 50,
+        "violations": []
+      }
+    },
+    "renderedFrames": false,
+    "authoritativeForRenderFps": false
+  }
+}
