@@ -131,12 +131,17 @@ export class BoardView {
     // Legality is not guessable from the terrain alone — three of 240 cells are
     // diggable and the rule involves pathing — so the armed tool paints its
     // legal targets rather than letting the player hunt for them.
+    //
+    // A pip rather than a filled cell, because build mode has ~110 legal
+    // targets: at that count a wash turns the board into one yellow shape and
+    // the relief that carries the whole read disappears. `setHighlights` scales
+    // the pip back up for the tools that only ever offer a handful.
     this.highlights = new InstancedMesh(
-      new PlaneGeometry(0.86, 0.86).rotateX(-Math.PI / 2),
+      new PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
       new MeshBasicMaterial({
         color: APP_PALETTE.coin,
         transparent: true,
-        opacity: 0.22,
+        opacity: 0.3,
         depthWrite: false,
         blending: AdditiveBlending,
       }),
@@ -157,17 +162,23 @@ export class BoardView {
     );
   }
 
-  /** Cells the armed tool may legally be used on. */
+  /**
+   * Cells the armed tool may legally be used on. Few targets get a filled cell;
+   * many get a centre pip, so "you may build almost anywhere" never repaints
+   * the board.
+   */
   setHighlights(cells: readonly { cx: number; cy: number }[]): void {
     const signature = cells.map((cell) => `${cell.cx},${cell.cy}`).join('|');
     if (signature === this.highlightSignature) return;
     this.highlightSignature = signature;
 
+    const size = cells.length > 12 ? 0.24 : 0.86;
+
     let index = 0;
     for (const cell of cells) {
       const style = TERRAIN_STYLES[this.grid.terrainAt(cell.cx, cell.cy) as TerrainName];
       this.scratch.position.set(cell.cx + 0.5, style.height + 0.02, cell.cy + 0.5);
-      this.scratch.scale.set(1, 1, 1);
+      this.scratch.scale.set(size, 1, size);
       this.scratch.rotation.set(0, 0, 0);
       this.scratch.updateMatrix();
       this.highlights.setMatrixAt(index, this.scratch.matrix);

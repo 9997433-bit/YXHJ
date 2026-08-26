@@ -11,10 +11,13 @@ import type { Game } from './game';
 const STYLE_ID = 'lw-app-dev-style';
 
 const CSS = `
+/* Top-right is the one corner the HUD leaves empty: src/ui puts the resource
+   rail top-left, the wave header top-centre, the build bar bottom-centre, the
+   action cluster bottom-right and the inspector on the right edge at 50%. */
 #lw-app-dev {
   position: fixed;
   top: 12px;
-  left: 12px;
+  right: 12px;
   z-index: 12;
   padding: 9px 12px;
   min-width: 210px;
