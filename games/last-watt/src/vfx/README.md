@@ -37,49 +37,41 @@ GDD 15.3 要求 20,000 粒全 GPU 模拟、CPU 粒子零使用，而本作没有
 | `ImpactDirector.ts` | 顿帧/闪光/震动统一入口与节流立法（不依赖 three） |
 | `budget.ts` | 预算计数与四级降级阶梯 |
 | `effects.ts` | 具体效果：冰碎、冻结、冷凝雾、锤击、超载、过热、死亡 |
-| `bloomMaskCompat.ts` | 与引擎自发光遮罩 pass 的兼容层，见下 |
+| `engineBridge.ts` | 接引擎每帧协议：timeScale、遮罩 pass、相机震动、HUD 冲击 |
+| `combatBridge.ts` | 接战斗事件：稳定信号 → `vfx.play` |
 | `cameraShake.ts` | 把震动量换算成相机世界偏移 |
-| `selfcheck.ts` | 无头自检，13 项断言，不需要 WebGL |
-| `demo/` | VFX Gym 试验台 |
+| `selfcheck.ts` | 无头自检，17 项断言，不需要 WebGL |
+| `demo/` | VFX Gym（纯粒子）与引擎接线试验台 |
 
 ## 接入方式（引擎）
 
-每帧协议，**顺序不能换**：
+一行接完：
 
 ```ts
 const vfx = new VfxSystem();
-vfx.attachTo(engine.scene);
-vfx.setViewport(renderer.getDrawingBufferSize(v).y, MathUtils.degToRad(CAMERA.fov));
-
-// 每帧
-const impact = vfx.beginFrame(realDtMs);  // ① 拿 timeScale
-world.step(realDtMs * impact.timeScale);  // ② 玩法按 timeScale 推进，期间 vfx.play(...)
-hud.applyImpact(impact);                  // ③ 白闪 / 暗角交给 UI 层
-vfx.endFrame();                           // ④ 推进粒子时钟、跑循环发射器
-renderer.render(scene, camera);           // ⑤ 属性脏区在这里上传
+const bridge = attachVfxToEngine(engine, vfx, { onImpact: (s) => hud.applyImpact(s) });
 ```
 
-把 `beginFrame` 的返回值丢掉，冰碎的 60ms 顿帧就不会生效——这是唯一需要引擎配合的地方。
+它把下面这份**顺序不能换**的协议接到 `engine.loop` 上：
 
-窗口 resize 或相机缩放档位切换后必须重新 `setViewport`，否则点精灵的世界尺寸→像素换算会错。
+```
+onFrameBegin  → vfx.beginFrame(realDtMs)，把 impact.timeScale 交回 loop
+onFixedUpdate → 玩法按 dt·timeScale 推进（顿帧期间一个 tick 都不跑），期间调 vfx.play(...)
+onRender      → vfx.endFrame()，推进粒子时钟与循环发射器
+onPresent     → 引擎绘制，属性脏区在这里上传
+post.onMaskPass → vfx.setMaskPass()
+```
 
-### 两个需要引擎侧各接一行的可选项
+丢掉 `beginFrame` 的返回值，冰碎就只剩粒子，没有那 60ms 的「咔嚓」——
+这是唯一一处需要引擎配合的地方，也是 `engineBridge` 存在的全部理由。
 
-1. **自发光遮罩 pass**（`engine/postfx/PostPipeline`）：
+桥还负责两件小事：视口跟随 `engine.onViewportChange` 刷新（漏了点精灵的
+世界尺寸→像素换算会错），以及把 `impact.shake` 换算成 `CameraRig.setShakeOffset`
+的世界偏移。震动只做**平移**——相机一旦转起来，固定俯角的网格读数会飘，玩家点格子会点偏。
 
-   ```ts
-   vfx.setMaskPass(true);  bloomComposer.render();  vfx.setMaskPass(false);
-   ```
+### 为什么粒子和贴花要退出遮罩材质替换
 
-   不接也能跑，只是雾与贴花会多吃一点辉光；接上就完全符合「Bloom 只吃自发光」。
-
-2. **相机震动**：用 `computeShakeOffset(camera, impact, out, focusDistance)` 拿到世界偏移，
-   加到 `CameraRig` 的基准位置上。震动只做**平移**——相机一旦转起来，
-   固定俯角的网格读数会飘，玩家点格子会点偏。
-
-### `bloomMaskCompat` 是什么，为什么必须存在
-
-引擎的 `EmissiveMask` 会在遮罩 pass 里把每个对象的材质临时换成代理材质。
+引擎的 `EmissiveMask` 会在遮罩 pass 里把每个对象的材质换成代理材质。
 这对普通网格是对的，对本模块是致命的：
 
 1. 粒子的运动写在顶点着色器里，代理材质没有这段代码，换上去之后 20,000 颗粒子
@@ -87,32 +79,50 @@ renderer.render(scene, camera);           // ⑤ 属性脏区在这里上传
 2. 代理材质默认黑色，而 `PointsMaterial` / `MeshBasicMaterial` 无贴图时画的是**实心方块**——
    遮罩图上会出现一片黑方块，合成后表现为辉光被抠掉。
 
-所以 `protectMaterialFromMaskSwap()` 锁住了这几个对象的 `material` 属性，
-让它们在两个 pass 里都用自己的着色器渲染，进不进 Bloom 改由 `uCull` 决定。
-**引擎侧若将来提供正式的「跳过某对象」开关，可以删掉这个文件改用那个开关。**
+所以粒子层与贴花层用引擎的正式开关 `skipBloomMask(object)` 声明「我自己渲」，
+进不进 Bloom 改由着色器里的 `uCull` 决定（雾、尘土、贴花是被照亮的东西，不是光源，
+遮罩 pass 里整层剔掉）。Round 1 那份靠 `Object.defineProperty` 吞掉材质赋值的
+`bloomMaskCompat.ts` 已经删除。
 
 ## 接入方式（战斗 / 玩法）
 
-只发事件，不碰粒子：
+战斗层只发事件，不碰粒子；`combatBridge` 负责翻译：
+
+```ts
+const combat = connectCombatToVfx(combatSystem.bus, vfx, {
+  mistTowers: [TOWER_IDS.condenserJet],
+  onComboFirstSeen: (combo) => hud.showComboTip(combo),
+});
+```
+
+绑的是 `combat/vfxSignals.ts` 的三条**稳定信号**，不是反应行 id
+（反应表拆行改名不该波及粒子层）：
+
+| 来源 | 演出 |
+|---|---|
+| `ice_shatter` | `ice-shatter`（碎片 + 亮芯 + 溅射环 + 霜痕 + 顿帧白闪） |
+| `frozen` (`begin`) | `freeze` |
+| `overload` (`begin` / `end`) | `overload-start` / 过热才有的 `overload-end` |
+| `enemy_killed` | `unit-death` |
+| `tower_fired` (`melee`) | `hammer-impact` |
+| `tower_fired` (`cone`，冷凝塔) | `condense-mist` 循环发射器，停火 700ms 自动收 |
+| `reaction_triggered`（**没有**稳定信号的行） | 按行声明的 `impact` 出顿帧/闪光/震动 |
+
+最后一行是防重复：带稳定信号的行由专属处理器负责，不再走通用冲击，
+否则冰碎会请求两次顿帧——第二次必被 100ms 立法驳回，驳回计数就此失真。
+
+想手动播放（试验台、Gym）时直接用事件名：
 
 ```ts
 vfx.play('ice-shatter', { position, splashRadius: 1, direction });
-vfx.play('freeze', { position, radius: 0.5 });
-vfx.play('hammer-impact', { position, shockwave: true });
-vfx.play('overload-start', { position, radiusCells: 1.5 });
-
-// 循环类返回句柄，记得 stop
 const mist = vfx.play('condense-mist', { position, direction, range: 3.2 });
 mist?.setTransform(newPosition, newDirection);   // 跟随炮口
 mist?.stop();                                    // 塔停机/断电/卖出时
 ```
 
-坐标一律是**世界坐标**（1 世界单位 = 1 格，地面 y=0），网格坐标请先用
-`engine/grid/coords.ts` 的 `cellToWorld` 换算。
-
-`combat/events.ts` 的事件流可以直接桥到这里（`reaction_triggered` → `ice-shatter`、
-`status_applied(frozen)` → `freeze`、`tower_state_changed(overloaded)` → `overload-start`）。
-本模块刻意**不 import `src/combat`**：两边都在同轮迭代，用结构化事件名对接比编译期耦合更抗改。
+坐标一律是**世界坐标**（1 世界单位 = 1 格，地面 y=0）；桥收到的战斗格坐标
+按 `(x, 高度, y)` 换算，与 `engine/grid/coords.ts` 同一套约定。
+本模块只在 `combatBridge.ts` 里 `import type` 战斗事件类型，运行期不依赖 `src/combat`。
 
 ## 预算与降级（GDD 15.3，程序约束不是建议值）
 
@@ -135,18 +145,20 @@ mist?.stop();                                    // 塔停机/断电/卖出时
 ## 验证
 
 ```bash
-# 无头自检：13 项断言，不需要 GPU，可进 CI
-npx esbuild src/vfx/selfcheck.ts --bundle --platform=node --format=cjs --outfile=/tmp/check.cjs
-node -e "const m=require('/tmp/check.cjs');" # 或直接在 tests/ 里 import runSelfCheck()
+npm run selfcheck   # 无头自检：17 项断言，不需要 GPU，可进 CI
 
-# VFX Gym：浏览器里看
-# 开发时用 Vite 访问 src/vfx/demo/index.html
-# ?t=1.30 用固定步长快进到第 1.30 秒停帧，画面逐帧可复现，可做截图回归
+# 浏览器里看（Vite 开发服务器）
+# src/vfx/demo/index.html        VFX Gym：只跑粒子与 HUD
+# src/vfx/demo/integration.html  引擎接线：真 Engine + 后处理 + VFX + HUD，战斗事件由脚本假扮
+# 两页都支持 ?t=2.80：固定步长快进到某一刻停帧，画面逐帧可复现，可做截图回归
 ```
 
 自检覆盖的是截图证明不了的部分：环形池越界与过期回收、combo 永不降级、
 循环发射器减半与隔帧、顿帧 100ms 节流、**顿帧期间粒子时钟同步冻结**、
-贴花淘汰、3600 帧混合大潮不破任何预算（实测峰值 2,130 粒 / 20,000）。
+贴花淘汰、3600 帧混合大潮不破任何预算（实测峰值 2,130 粒 / 20,000），
+以及 Round 2 补的三处接线：遮罩 pass 里粒子/贴花保留自身材质而普通网格照常代理、
+真实 `Loop` 下顿帧期间逻辑 tick 为 0 而画面照常出帧、战斗信号到 `vfx.play` 的映射
+（含冷凝雾停火自动收与「带稳定信号的行不重复请求顿帧」）。
 
 ## 已知边界
 

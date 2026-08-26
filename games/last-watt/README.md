@@ -25,6 +25,14 @@ npm install && npm run dev
 | `npm run build` | 生产构建到 `dist/`（相对 base，可直接静态托管） |
 | `npm run preview` | 本地预览 `dist/` 构建产物 |
 | `npm run typecheck` | `tsc --noEmit` 全量类型检查（不参与 dev/build 链路） |
+| `npm run selfcheck` | VFX 层无头自检（17 项断言，不需要 GPU，可进 CI） |
+
+试验台页面（Vite 下直接访问，不进生产构建）：
+
+| 页面 | 看什么 |
+|---|---|
+| `/src/vfx/demo/index.html` | VFX Gym：只跑粒子与 HUD，不启动引擎；`?t=1.2` 定帧截图 |
+| `/src/vfx/demo/integration.html` | 引擎接线：真 Engine + 后处理 + VFX + HUD，战斗事件由脚本假扮；`?t=2.8` 定帧截图 |
 
 ---
 
@@ -66,6 +74,19 @@ Round 1 的引擎层交付（R1-O1），对应 GDD 第 15.1 节锁定的画面�
 glowCardMaterial.userData.bloom = true;  // 没有 emissive 通道的加算光片，强制参与 Bloom
 matteEmissiveMaterial.userData.bloom = false; // 有 emissive 但不许发光
 ```
+
+**自己写着色器的对象要整个退出材质替换**，否则代理材质会丢掉它的顶点程序
+（GPU 粒子会全部退回出生点），并且在遮罩图上画出一片实心黑方块：
+
+```ts
+import { skipBloomMask, hideFromBloomMask } from '@engine/index';
+
+skipBloomMask(particleSystem.points); // 用自己的材质渲两个 pass，进不进 Bloom 由着色器自己决定
+hideFromBloomMask(debugGizmo);        // 连同子树一起，从遮罩 pass 里消失
+```
+
+需要在遮罩 pass 里临时改自己状态（比如剔掉「被照亮但不发光」的那一层）的系统，
+订阅 `engine.post.onMaskPass`：它在遮罩 pass 前后各发一次 `true` / `false`。
 
 ---
 
@@ -113,6 +134,24 @@ import { Engine, cellToWorld, PALETTE } from '@engine/index';
   engine.onRender(({ alpha }) => view.interpolate(alpha));
   engine.start();
   ```
+
+- **每帧协议**（顺序即契约）：
+
+  ```
+  onFrameBegin  真实 dt —— 唯一能改本帧 timeScale 的时机
+  onFixedUpdate 按 dt·timeScale 推进；timeScale = 0 时一个 tick 都不跑
+  onRender      表现层写状态（VFX 在这里结帧）
+  onPresent     引擎绘制
+  ```
+
+  顿帧（冰碎那 60ms）就是把 `timeScale` 压到 0：模拟与粒子一起定住，帧率不掉。
+  发起方是 VFX 的 `ImpactDirector`，接线只有一行，写在 `vfx/engineBridge.ts` 里：
+
+  ```ts
+  const bridge = attachVfxToEngine(engine, vfx, { onImpact: (s) => hud.applyImpact(s) });
+  ```
+
+  无头脚本用 `engine.loop.step(dt)` 驱动同一套协议，不需要 rAF。
 
 - **格坐标**：`cell (col,row)` 的中心是 `((col+0.5), 0, (row+0.5))`，整块棋盘落在正象限 `x∈[0,20] z∈[0,12]`。别自己另算一套。
 - **想让东西发光就给它 `emissive`**，不要靠调亮 `color`——后者不会进 Bloom，这是有意的。
