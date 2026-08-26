@@ -1,3 +1,9 @@
+import { BoxGeometry, Mesh, MeshStandardMaterial, Scene } from 'three';
+
+import type { CombatEventMap, CombatEventName } from '../combat/events';
+import { Loop } from '../engine/core/Loop';
+import { EmissiveMask } from '../engine/postfx/EmissiveMask';
+import { getBloomMaskPolicy, hideFromBloomMask } from '../engine/postfx/bloomMask';
 import { DecalManager } from './DecalManager';
 import { GpuParticleSystem } from './GpuParticleSystem';
 import { ImpactDirector, IMPACT_PRESETS, ShakeTier } from './ImpactDirector';
@@ -6,6 +12,7 @@ import { DegradeLevel, VFX_BUDGET, VfxBudget } from './budget';
 import { ParticleTile, buildParticleAtlas } from './atlas';
 import { PALETTE, withAlpha } from './palette';
 import { VfxPriority } from './events';
+import { connectCombatToVfx, type CombatEventSource } from './combatBridge';
 
 /**
  * VFX 层无头自检。
@@ -38,6 +45,32 @@ function assert(condition: boolean, message: string): void {
 }
 
 const ORIGIN = { x: 0, y: 0, z: 0 };
+
+/** 战斗事件桥的测试替身：只要能订阅就够，不需要拉起整个 CombatSystem。 */
+class FakeCombatBus implements CombatEventSource {
+  private readonly listeners = new Map<CombatEventName, Set<(payload: never) => void>>();
+
+  on<K extends CombatEventName>(
+    name: K,
+    listener: (payload: CombatEventMap[K]) => void,
+  ): () => void {
+    let set = this.listeners.get(name);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(name, set);
+    }
+    set.add(listener as (payload: never) => void);
+    return () => {
+      set?.delete(listener as (payload: never) => void);
+    };
+  }
+
+  emit<K extends CombatEventName>(name: K, payload: CombatEventMap[K]): void {
+    for (const listener of this.listeners.get(name) ?? []) {
+      (listener as (p: CombatEventMap[K]) => void)(payload);
+    }
+  }
+}
 
 export function runSelfCheck(): CheckResult[] {
   const results: CheckResult[] = [];
@@ -346,6 +379,217 @@ export function runSelfCheck(): CheckResult[] {
     assert(decals <= VFX_BUDGET.maxDecals, `贴花 ${decals} 超上限`);
     vfx.dispose();
     return `3600 帧峰值 ${peak} 粒 / ≤${VFX_BUDGET.maxParticles}，贴花 ${decals} / ≤${VFX_BUDGET.maxDecals}`;
+  });
+
+  check(results, '自发光遮罩：粒子/贴花保留自己的着色器，普通网格照常代理', () => {
+    const scene = new Scene();
+    const vfx = new VfxSystem({ additiveCapacity: 64, alphaCapacity: 64, decalCapacity: 8 });
+    vfx.attachTo(scene);
+
+    const lit = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial());
+    const gizmo = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial());
+    hideFromBloomMask(gizmo);
+    scene.add(lit, gizmo);
+
+    const particles = vfx.particles.root.children[0] as Mesh;
+    assert(
+      getBloomMaskPolicy(particles)?.skipMaterialSwap === true,
+      '粒子层没有声明跳过遮罩材质替换',
+    );
+    assert(
+      getBloomMaskPolicy(vfx.decals.mesh)?.skipMaterialSwap === true,
+      '贴花层没有声明跳过遮罩材质替换',
+    );
+
+    const particleMaterial = particles.material;
+    const decalMaterial = vfx.decals.mesh.material;
+    const litMaterial = lit.material;
+
+    const mask = new EmissiveMask();
+    mask.apply(scene);
+    // 换掉粒子材质 = 20,000 颗粒子退回出生点 + 遮罩图上一片黑方块
+    assert(particles.material === particleMaterial, '粒子材质在遮罩 pass 里被换掉了');
+    assert(vfx.decals.mesh.material === decalMaterial, '贴花材质在遮罩 pass 里被换掉了');
+    assert(lit.material !== litMaterial, '普通网格没有换成代理材质，遮罩会吃到光照反照率');
+    assert(!gizmo.visible, 'hidden 策略的对象仍进了遮罩 pass');
+
+    mask.revert();
+    assert(lit.material === litMaterial, '遮罩 pass 结束后没有还原真实材质');
+    assert(gizmo.visible, 'hidden 策略的对象没有被还原可见');
+
+    mask.dispose();
+    vfx.dispose();
+    return '粒子/贴花保留自身材质，普通网格代理并还原，hidden 子树被排除';
+  });
+
+  check(results, '引擎帧协议：冰碎顿帧冻结逻辑 tick，渲染照常出帧', () => {
+    const loop = new Loop();
+    const vfx = new VfxSystem();
+    const dt = 1 / 60;
+
+    let ticks = 0;
+    let frames = 0;
+    let fired = false;
+
+    loop.onFrameBegin.add(({ realDelta }) => {
+      // 这一行就是「引擎采纳 timeScale」，整份自检就是为了盯死它
+      loop.timeScale = vfx.beginFrame(realDelta * 1000).timeScale;
+    });
+    loop.onFixedUpdate.add(() => {
+      ticks += 1;
+      if (fired) return;
+      fired = true;
+      vfx.play('ice-shatter', { position: ORIGIN });
+    });
+    loop.onRender.add(() => vfx.endFrame());
+    loop.onPresent.add(() => {
+      frames += 1;
+    });
+
+    loop.step(dt);
+    assert(fired, '第一帧没有跑逻辑 tick');
+    const ticksAtShatter = ticks;
+    const framesAtShatter = frames;
+
+    // 60ms 顿帧 ≈ 3.6 个 60fps 帧：这 3 帧里逻辑必须完全停住
+    for (let i = 0; i < 3; i++) loop.step(dt);
+    assert(ticks === ticksAtShatter, `顿帧期间跑了 ${ticks - ticksAtShatter} 个逻辑 tick`);
+    assert(frames === framesAtShatter + 3, '顿帧把渲染也停了——顿帧只冻结模拟，不冻结画面');
+    assert(loop.timeScale === 0, '顿帧期间 timeScale 不是 0');
+
+    // 顿帧走完必须自己恢复，不需要任何人手动重置
+    for (let i = 0; i < 3; i++) loop.step(dt);
+    assert(loop.timeScale === 1, '顿帧结束后 timeScale 未恢复');
+    assert(ticks > ticksAtShatter, '顿帧结束后逻辑没有恢复推进');
+
+    loop.dispose();
+    vfx.dispose();
+    return `顿帧 3 帧内 0 tick / ${frames - framesAtShatter} 帧画面，之后恢复到 ${ticks} tick`;
+  });
+
+  check(results, '战斗事件桥：稳定信号 → 粒子，冲击不被重复请求', () => {
+    const vfx = new VfxSystem();
+    const bus = new FakeCombatBus();
+    const bridge = connectCombatToVfx(bus, vfx, { mistTowers: ['condenser_jet'] });
+
+    vfx.beginFrame(16.7);
+    bus.emit('ice_shatter', {
+      enemyId: 1,
+      sourceId: 2,
+      position: { x: 3.5, y: 4.5 },
+      splashRadius: 1,
+      direction: { x: 1, y: 0 },
+      damage: 112,
+      impact: { signal: 'ice_shatter', hitstop: 60, flash: '#BFF7FF' },
+    });
+    assert(
+      vfx.particles.stats.emittedThisFrame >= 24,
+      `冰碎信号只发了 ${vfx.particles.stats.emittedThisFrame} 粒`,
+    );
+    assert(vfx.decals.count === 1, '冰碎信号没有留下霜痕贴花');
+    assert(vfx.impact.isHitstopped, '冰碎信号没有触发顿帧');
+
+    // 同一行还会发一条 reaction_triggered；带稳定信号的行必须被桥忽略，
+    // 否则这里会多出一次被 100ms 立法驳回的顿帧请求
+    bus.emit('reaction_triggered', {
+      rowId: 'ice_shatter',
+      position: { x: 3.5, y: 4.5 },
+      impact: { signal: 'ice_shatter', hitstop: 60, flash: '#BFF7FF' },
+    });
+    assert(
+      vfx.impact.diagnostics.hitstopsRejected === 0,
+      '带稳定信号的反应行又请求了一次顿帧',
+    );
+
+    bus.emit('frozen', {
+      phase: 'begin',
+      enemyId: 1,
+      position: { x: 3.5, y: 4.5 },
+      radius: 0.4,
+      duration: 2,
+    });
+    bus.emit('overload', {
+      phase: 'begin',
+      scope: 'radius',
+      origin: { x: 8.5, y: 6.5 },
+      radiusCells: 1,
+      towers: [{ towerId: 9, defId: 'mg_rivet', position: { x: 8.5, y: 5.5 } }],
+      duration: 6,
+      overheat: 3,
+    });
+    bus.emit('enemy_killed', {
+      enemyId: 1,
+      defId: 'scavenger_bug',
+      bounty: 5,
+      position: { x: 3.5, y: 4.5 },
+    });
+    assert(bridge.played['freeze'] === 1, '冻结信号没有接上');
+    assert(bridge.played['overload-start'] === 1, '超载信号没有接上');
+    assert(bridge.played['unit-death'] === 1, '击杀没有接上');
+
+    // 冷凝塔连续开火只维持一个循环发射器
+    const shot = {
+      towerId: 7,
+      defId: 'condenser_jet',
+      from: { x: 2.5, y: 2.5 },
+      to: { x: 5.5, y: 2.5 },
+      attackKind: 'cone',
+    };
+    bus.emit('tower_fired', shot);
+    bus.emit('tower_fired', shot);
+    assert(bridge.activeLoops === 1, `冷凝雾发射器应为 1，实际 ${bridge.activeLoops}`);
+    vfx.endFrame();
+
+    // 停火 700ms 后自动收掉，不需要战斗层发「我停了」
+    for (let i = 0; i < 45; i++) {
+      vfx.beginFrame(16.7);
+      vfx.endFrame();
+    }
+    assert(bridge.activeLoops === 0, '停火后冷凝雾没有自动停');
+    assert(vfx.stats.loopEmitters === 0, '循环发射器槽位泄漏');
+
+    bridge.detach();
+    vfx.dispose();
+    return `冰碎/冻结/超载/击杀四条信号接通，冷凝雾启停对称`;
+  });
+
+  check(results, '战斗事件桥：只有无稳定信号的行才吃通用屏幕冲击', () => {
+    const vfx = new VfxSystem();
+    const bus = new FakeCombatBus();
+    const bridge = connectCombatToVfx(bus, vfx);
+
+    vfx.beginFrame(16.7);
+    // 大招·主控过载：80ms 顿帧 + 电青闪 + 轻震，全部写在行的 impact 里
+    bus.emit('reaction_triggered', {
+      rowId: 'master_overload',
+      position: { x: 10.5, y: 6.5 },
+      impact: { hitstop: 80, flash: '#35E0FF', shake: 'light' },
+    });
+    assert(vfx.impact.isHitstopped, '通用路径没有吃到行声明的顿帧');
+    assert(vfx.impact.state.flash.alpha > 0.4, '通用路径没有吃到行声明的闪光');
+    vfx.endFrame();
+
+    vfx.beginFrame(16.7);
+    const shake = Math.hypot(vfx.impact.state.shake.x, vfx.impact.state.shake.y);
+    assert(shake > 0, '通用路径没有吃到行声明的震动');
+    vfx.endFrame();
+
+    // 什么冲击都没声明的行不该惊动 ImpactDirector
+    const accepted = vfx.impact.diagnostics.hitstopsAccepted;
+    bus.emit('reaction_triggered', {
+      rowId: 'oil_cell_coats',
+      position: { x: 4.5, y: 4.5 },
+      impact: { vfx: 'fx_oil_step' },
+    });
+    assert(
+      vfx.impact.diagnostics.hitstopsAccepted === accepted &&
+        vfx.impact.diagnostics.hitstopsRejected === 0,
+      '没有声明冲击的行也去请求了顿帧',
+    );
+
+    bridge.detach();
+    vfx.dispose();
+    return `顿帧 80ms + 闪光 + 震动 ${shake.toFixed(5)}，无冲击行静默`;
   });
 
   return results;

@@ -11,7 +11,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "selfcheck": "vite build --ssr src/vfx/selfcheck.run.ts --outDir .selfcheck --logLevel warn && node .selfcheck/selfcheck.run.js"
   },
   "dependencies": {
     "three": "^0.185.1"
