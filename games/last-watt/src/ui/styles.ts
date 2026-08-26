@@ -175,6 +175,8 @@ export const HUD_CSS = `
   color: ${hexToCss(COLORS.alert, 0.85)};
   white-space: nowrap;
 }
+/* 丢区关掉时：跌破的刻度亮起来，但不写「已丢」 */
+.lw-integrity__mark--breached { font-weight: 700; text-shadow: ${textGlow(COLORS.alert, 0.6)}; }
 .lw-integrity--critical .lw-integrity__track {
   border-color: ${hexToCss(COLORS.alert, 0.9)};
   box-shadow: ${glow(COLORS.alert, 0.5)};
@@ -357,6 +359,20 @@ export const HUD_CSS = `
   color: ${hexToCss(COLORS.coin, 1)};
 }
 .lw-eng__icon { width: 22px; height: 22px; }
+/* 左上角：右上角是剩余次数，中间是图标与标签，只有这里是空的 */
+.lw-eng__free {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #150f09;
+  background: ${hexToCss(COLORS.coin, 0.92)};
+}
+.lw-eng__button--free { border-color: ${hexToCss(COLORS.coin, 0.7)}; box-shadow: ${glow(COLORS.coin, 0.35)}; }
 
 .lw-ult {
   position: relative;

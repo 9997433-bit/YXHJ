@@ -13,8 +13,10 @@ export class ActionCluster {
 
   private readonly digButton: HTMLButtonElement;
   private readonly digCount: HTMLElement;
+  private readonly digFree: HTMLElement;
   private readonly bridgeButton: HTMLButtonElement;
   private readonly bridgeCount: HTMLElement;
+  private readonly bridgeFree: HTMLElement;
   private readonly ultButton: HTMLButtonElement;
   private readonly ultPips: HTMLElement;
   private pipNodes: HTMLElement[] = [];
@@ -22,10 +24,12 @@ export class ActionCluster {
 
   constructor(private readonly callbacks: HudCallbacks) {
     this.digCount = el('span', 'lw-eng__count', '0');
-    this.digButton = this.createEngButton('dig', '挖沟', this.digCount);
+    this.digFree = el('span', 'lw-eng__free', '赠送');
+    this.digButton = this.createEngButton('dig', '挖沟', this.digCount, this.digFree);
 
     this.bridgeCount = el('span', 'lw-eng__count', '0');
-    this.bridgeButton = this.createEngButton('bridge', '搭桥', this.bridgeCount);
+    this.bridgeFree = el('span', 'lw-eng__free', '赠送');
+    this.bridgeButton = this.createEngButton('bridge', '搭桥', this.bridgeCount, this.bridgeFree);
 
     this.ultPips = el('div', 'lw-ult__pips');
     this.ultButton = el('button', 'lw-panel lw-ult') as HTMLButtonElement;
@@ -48,15 +52,22 @@ export class ActionCluster {
   update(state: HudState): void {
     const eng = state.engineering;
 
+    // 「挖沟：0 金」读起来像坏了；一次赠送的镐头要说自己是赠送的（GDD 11 波 5）。
+    const digFree = eng.freeDig ?? 0;
     setText(this.digCount, String(eng.digLeft));
+    this.digFree.hidden = digFree <= 0;
     this.digButton.disabled = eng.digLeft <= 0;
     setClass(this.digButton, 'lw-eng__button--armed', eng.armed === 'dig');
-    this.digButton.title = `挖沟：${eng.digCost} 金，剩 ${eng.digLeft} 次`;
+    setClass(this.digButton, 'lw-eng__button--free', digFree > 0);
+    this.digButton.title = engTitle('挖沟', eng.digCost, eng.digLeft, digFree);
 
+    const bridgeFree = eng.freeBridge ?? 0;
     setText(this.bridgeCount, String(eng.bridgeLeft));
+    this.bridgeFree.hidden = bridgeFree <= 0;
     this.bridgeButton.disabled = eng.bridgeLeft <= 0;
     setClass(this.bridgeButton, 'lw-eng__button--armed', eng.armed === 'bridge');
-    this.bridgeButton.title = `搭桥：${eng.bridgeCost} 金，剩 ${eng.bridgeLeft} 次`;
+    setClass(this.bridgeButton, 'lw-eng__button--free', bridgeFree > 0);
+    this.bridgeButton.title = engTitle('搭桥', eng.bridgeCost, eng.bridgeLeft, bridgeFree);
 
     if (state.ultimate.maxCharges !== this.lastMaxCharges) {
       this.lastMaxCharges = state.ultimate.maxCharges;
@@ -84,15 +95,23 @@ export class ActionCluster {
     kind: 'dig' | 'bridge',
     label: string,
     count: HTMLElement,
+    free: HTMLElement,
   ): HTMLButtonElement {
+    free.hidden = true;
     const button = el('button', 'lw-eng__button') as HTMLButtonElement;
     button.type = 'button';
     button.append(
       createIcon(kind === 'dig' ? 'eng-dig' : 'eng-bridge', 'lw-eng__icon'),
       el('span', '', label),
       count,
+      free,
     );
     button.addEventListener('click', () => this.callbacks.onEngineering?.(kind));
     return button;
   }
+}
+
+function engTitle(label: string, cost: number, left: number, free: number): string {
+  const price = free > 0 ? `赠送 ${free} 次（不扣金、不占配额）` : `${cost} 金`;
+  return `${label}：${price}，剩 ${left} 次`;
 }

@@ -63,6 +63,8 @@ export interface ZoneThreshold {
   value: number;
   label: string;
   lost: boolean;
+  /** 完整度已经跌破这条刻度。丢区关掉时，这是刻度唯一还成立的含义 */
+  breached?: boolean;
 }
 
 export interface HudState {
@@ -89,6 +91,11 @@ export interface HudState {
   integrity: {
     value: number;
     max: number;
+    /**
+     * 丢区是否生效。M1 关掉（`gameplay/rules/scope.ts`），此时 80 / 50 两条刻度
+     * 只是「核心伤得多重」的记号，写「已丢」就是骗人。省略按 true 处理。
+     */
+    lossEnabled?: boolean;
     thresholds: ZoneThreshold[];
   };
   build: BuildItemState[];
@@ -97,8 +104,12 @@ export interface HudState {
   engineering: {
     digLeft: number;
     bridgeLeft: number;
+    /** 下一次的实际报价；有未花的赠送次数时为 0 */
     digCost: number;
     bridgeCost: number;
+    /** 剩余赠送次数（GDD 11：波 5 送一镐），>0 时按钮打「赠送」角标 */
+    freeDig?: number;
+    freeBridge?: number;
     /** 当前处于「已选中待落点」状态的工程操作 */
     armed: 'dig' | 'bridge' | null;
   };

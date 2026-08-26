@@ -311,6 +311,7 @@ export class Game {
   private syncBoard(): void {
     this.board.syncTerrain();
     this.board.setHighlights(this.session.highlightTargets());
+    this.board.setHint(this.session.world.engineering.recommendation);
     if (this.routeVersion === this.session.world.grid.version) return;
     this.routeVersion = this.session.world.grid.version;
     this.board.syncRoutes(this.session.world.groundField, this.session.world.openGates);

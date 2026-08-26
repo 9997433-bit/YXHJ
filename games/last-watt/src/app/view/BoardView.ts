@@ -55,6 +55,7 @@ export class BoardView {
   private readonly cursor: Mesh;
   private readonly rangeRing: Mesh;
   private readonly highlights: InstancedMesh;
+  private readonly hint: Mesh;
   private readonly routes: Line[] = [];
   private readonly routeGroup = new Group();
   private readonly scratch = new Object3D();
@@ -151,15 +152,45 @@ export class BoardView {
     this.highlights.count = 0;
     this.highlights.renderOrder = 3;
 
+    // The tutorial's free dig points at one cell (GDD §11 wave 5). A legality
+    // pip cannot carry that — every legal cell has one — so the recommendation
+    // gets its own ring in the coin colour the free badge uses.
+    this.hint = new Mesh(
+      new RingGeometry(0.34, 0.46, 40).rotateX(-Math.PI / 2),
+      new MeshBasicMaterial({
+        color: APP_PALETTE.coin,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+        side: DoubleSide,
+        blending: AdditiveBlending,
+      }),
+    );
+    this.hint.name = 'lw-hint';
+    this.hint.visible = false;
+    this.hint.renderOrder = 4;
+
     this.routeGroup.name = 'lw-routes';
     this.root.add(
       this.cells,
       this.emissiveCells,
       this.routeGroup,
       this.highlights,
+      this.hint,
       this.cursor,
       this.rangeRing,
     );
+  }
+
+  /** The one cell an unspent tutorial charge is pointing at, or none. */
+  setHint(cell: { cx: number; cy: number } | null): void {
+    if (!cell) {
+      this.hint.visible = false;
+      return;
+    }
+    const style = TERRAIN_STYLES[this.grid.terrainAt(cell.cx, cell.cy) as TerrainName];
+    this.hint.position.set(cell.cx + 0.5, style.height + 0.04, cell.cy + 0.5);
+    this.hint.visible = true;
   }
 
   /**
@@ -325,6 +356,10 @@ export class BoardView {
 
   update(dt: number): void {
     this.cursorPulse += dt;
+    if (this.hint.visible) {
+      const pulse = 1 + Math.sin(this.cursorPulse * 3.2) * 0.12;
+      this.hint.scale.set(pulse, 1, pulse);
+    }
     if (!this.cursor.visible) return;
     const material = this.cursor.material as MeshBasicMaterial;
     material.opacity = 0.22 + Math.sin(this.cursorPulse * 6) * 0.1;
@@ -360,6 +395,8 @@ export class BoardView {
     (this.rangeRing.material as MeshBasicMaterial).dispose();
     this.highlights.geometry.dispose();
     (this.highlights.material as MeshBasicMaterial).dispose();
+    this.hint.geometry.dispose();
+    (this.hint.material as MeshBasicMaterial).dispose();
     for (const line of this.routes) {
       line.geometry.dispose();
       (line.material as LineBasicMaterial).dispose();

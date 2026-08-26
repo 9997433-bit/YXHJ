@@ -35,6 +35,7 @@ export class ResourceRail {
   private lastGold = Number.NaN;
   private lastDeficit = 0;
   private lastThresholdKey = '';
+  private lastLossEnabled = true;
   private deltaTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -242,11 +243,15 @@ export class ResourceRail {
     setStyle(this.integrityFill, 'width', `${(ratio * 100).toFixed(1)}%`);
     setText(this.integrityValue, String(Math.ceil(integrity.value)));
 
+    // 丢区关掉时（M1），刻度还在，但它预告的事情不会发生：写「已丢」是骗人，
+    // 而完全不动它等于让玩家一直等一个不会来的惩罚。所以改成「跌破」的记号。
+    const lossEnabled = integrity.lossEnabled !== false;
     const key = integrity.thresholds
-      .map((t) => `${t.value}:${t.label}:${t.lost ? 1 : 0}`)
+      .map((t) => `${t.value}:${t.label}:${t.lost ? 1 : 0}:${t.breached ? 1 : 0}`)
       .join('|');
-    if (key !== this.lastThresholdKey) {
+    if (key !== this.lastThresholdKey || lossEnabled !== this.lastLossEnabled) {
       this.lastThresholdKey = key;
+      this.lastLossEnabled = lossEnabled;
       // 刻度线画在条上，标签画在条下——阈值旁边预告丢哪个区（GDD 14.1）
       for (const node of Array.from(this.integrityTicks.querySelectorAll('.lw-integrity__tick'))) {
         node.remove();
@@ -258,14 +263,23 @@ export class ResourceRail {
         tick.style.left = `${percent}%`;
         this.integrityTicks.append(tick);
 
-        const mark = el('div', 'lw-integrity__mark', `${threshold.label}${threshold.lost ? ' 已丢' : ''}`);
+        const breached = threshold.breached === true;
+        const flagged = lossEnabled ? threshold.lost : breached;
+        const suffix = lossEnabled ? (threshold.lost ? ' 已丢' : '') : '';
+        const mark = el('div', 'lw-integrity__mark', `${threshold.label}${suffix}`);
         mark.style.left = `${percent}%`;
-        mark.style.opacity = threshold.lost ? '1' : '0.7';
+        mark.style.opacity = flagged ? '1' : '0.7';
+        setClass(mark, 'lw-integrity__mark--breached', !lossEnabled && breached);
+        mark.title = lossEnabled
+          ? `完整度跌破 ${threshold.value}，丢掉「${threshold.label}」`
+          : `完整度跌破 ${threshold.value}：本里程碑只记伤，不会丢掉「${threshold.label}」`;
         this.integrityMarks.append(mark);
       }
     }
 
-    const nextThreshold = integrity.thresholds.find((t) => !t.lost);
+    const nextThreshold = integrity.thresholds.find((t) =>
+      lossEnabled ? !t.lost : t.breached !== true,
+    );
     setClass(
       this.integrity,
       'lw-integrity--critical',
