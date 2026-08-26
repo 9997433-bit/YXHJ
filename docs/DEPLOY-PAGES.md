@@ -11,7 +11,8 @@ https://9997433-bit.github.io/YXHJ/<game-id>/       以后每个新游戏
 ```
 
 仓库名是 `YXHJ`（用户提到的 `YHJH` 在该账号下不存在，`gh repo list 9997433-bit` 已核对），
-所以 Pages 的项目站点前缀是 `/YXHJ/`。
+所以 Pages 的项目站点前缀是 `/YXHJ/`。`https://9997433-bit.github.io/YHJH/` 是 404，
+且改不了——那个仓库不存在，只能改用 `/YXHJ/` 的地址。
 
 ## Vite base
 
@@ -44,22 +45,45 @@ cd ../.preview && python3 -m http.server 8080   # http://localhost:8080/YXHJ/las
 
 ## 发布方式
 
-`gh-pages` 分支托管构建产物，`main` 只放源码。
+`.github/workflows/pages.yml` 在 `main` 上 `games/last-watt/**`、`site/**`
+或 workflow 自身有改动时重建站点。`cursor/pages-**` 分支上也会跑，但只构建、不发布。
 
-- 首次发布由人工推了一次 `gh-pages`（`last-watt/` 前缀 + 根索引页 + `.nojekyll`）。
-- 之后 `.github/workflows/pages.yml` 接管：`main` 上 `games/last-watt/**` 或 `site/**` 有改动就重建并推 `gh-pages`。
-  该 workflow 只重写 `last-watt/` 这一个目录，`gh-pages` 上其它游戏的目录不受影响。
-- 加新游戏时，复制 workflow 里的 build + stage 两步，把 `last-watt` 换成新的 game id，并在 `site/index.html` 加一行链接。
+workflow 先读一次 `GET /repos/:owner/:repo/pages`，按当前的 Pages source 决定怎么发：
+
+| Pages source | workflow 的动作 |
+| --- | --- |
+| `Deploy from a branch`（`build_type: legacy`） | 把产物推到 `gh-pages` 分支 |
+| `GitHub Actions`（`build_type: workflow`） | `upload-pages-artifact` + `deploy-pages` |
+| 未开启（API 404） | 只构建，写一条 job summary 说明还差哪一步，**不报红** |
+
+推 `gh-pages` 时只重写 `last-watt/` 这一个目录，分支上其它游戏的目录不受影响。
+加新游戏时复制 build + stage 两步，把 `last-watt` 换成新的 game id，并在 `site/index.html` 加一行链接。
 
 ## 仍需人工在 GitHub 网页上完成的一步
 
-当前 Cloud Agent 的 token 对本仓库没有 admin 权限（`gh api repos/9997433-bit/YXHJ` 返回 `admin: false`，
-`/pages` 返回 404），无法用 API 打开 Pages。请仓库 owner 手动开一次，只需一次：
+**开启 Pages 站点这件事，任何 workflow 都做不到。** 创建 Pages 站点算仓库管理操作，
+需要 `Administration: write`；GitHub 出于安全考虑禁止一切 GitHub App token（包括
+Actions 的 `GITHUB_TOKEN` 和 Cloud Agent 的 token）调这个接口，`permissions:` 里
+写什么都不行，只有用户级 token（PAT/OAuth）才能创建。实测两条路都是 403
+`Resource not accessible by integration`：
+
+```bash
+gh api -X POST repos/9997433-bit/YXHJ/pages -f build_type=workflow          # 403
+gh api -X POST repos/9997433-bit/YXHJ/pages -f 'source[branch]=gh-pages'    # 403
+```
+
+`actions/configure-pages` 的 `enablement: true` 走的是同一个接口，同样 403，所以已经从
+workflow 里去掉了。
+
+请仓库 owner 手动开一次，只需一次：
 
 **Settings → Pages → Build and deployment → Source 选 `Deploy from a branch`
 → Branch 选 `gh-pages`，目录选 `/ (root)` → Save。**
 
-保存后等 1–2 分钟，站点就在 `https://9997433-bit.github.io/YXHJ/last-watt/`。
+选 `gh-pages` 分支是因为该分支上已经有构建好的站点（`index.html`、`last-watt/`、`.nojekyll`，
+资源前缀 `/YXHJ/last-watt/`），保存后 1–2 分钟站点就能打开，不用等任何 PR 合并。
+
+（选 `GitHub Actions` 也行，但那样要先把本 workflow 合进 `main` 再跑一次才有内容。）
 
 如果 Actions 推 `gh-pages` 失败并提示权限不足，再检查
 **Settings → Actions → General → Workflow permissions**，选 `Read and write permissions`。

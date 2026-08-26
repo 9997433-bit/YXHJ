@@ -2,8 +2,8 @@ name: Deploy games to GitHub Pages
 
 on:
   push:
-    # cursor/pages-** lets a Pages change prove itself before it reaches main;
-    # without a run on the branch there is no way to enable Pages from CI.
+    # cursor/pages-** builds the site without publishing, so a Pages change can
+    # be proven before it reaches main.
     branches: [main, 'cursor/pages-**']
     paths:
       - 'games/last-watt/**'
@@ -21,16 +21,23 @@ jobs:
     permissions:
       # write is only for the gh-pages mirror at the end of the job.
       contents: write
-      pages: write
+      pages: read
+    outputs:
+      pages_source: ${{ steps.probe.outputs.source }}
     steps:
       - uses: actions/checkout@v4
 
-      # enablement turns Pages on with the workflow token, so nobody has to open
-      # Settings; it needs pages:write, not repo admin.
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      # GITHUB_TOKEN may read and deploy to Pages but can never create the site
+      # — that is a repo-admin operation no workflow permission unlocks. So a
+      # missing site is something the owner must fix, not a build failure.
+      - name: Probe the Pages configuration
+        id: probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          source=$(gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null || echo none)
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+          echo "Pages build_type: $source"
 
       - uses: actions/setup-node@v4
         with:
@@ -55,20 +62,22 @@ jobs:
           cp site/index.html _site/index.html
           touch _site/.nojekyll
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Upload Pages artifact
+        if: steps.probe.outputs.source == 'workflow' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
-      # Kept in step with the artifact so the site still works if the repo owner
-      # points Pages at the gh-pages branch instead of Actions.
+      # The branch source needs the built files committed, so keep gh-pages in
+      # step whenever Pages is not publishing straight from this workflow.
       - name: Mirror to gh-pages
-        if: github.ref == 'refs/heads/main'
+        if: steps.probe.outputs.source != 'workflow' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
           rm -rf pages
-          git clone --depth 1 --branch gh-pages \
-            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" pages \
+          git clone --depth 1 --branch gh-pages "$remote" pages \
             || { rm -rf pages; mkdir pages; git -C pages init -q -b gh-pages; }
           # Only this game's directory is replaced; sibling games on gh-pages survive.
           rm -rf pages/last-watt
@@ -82,10 +91,26 @@ jobs:
           git add -A
           git diff --cached --quiet && exit 0
           git commit -m "deploy: ${{ github.sha }}"
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" HEAD:gh-pages
+          git push "$remote" HEAD:gh-pages
+
+      - name: Report what is still missing
+        if: steps.probe.outputs.source == 'none'
+        run: |
+          {
+            echo '### GitHub Pages is not enabled yet'
+            echo
+            echo 'The build succeeded and `gh-pages` holds the current site, but the'
+            echo 'repository has no Pages site. No workflow token can create one.'
+            echo
+            echo 'Repo owner, one time: **Settings → Pages → Build and deployment →'
+            echo 'Source → Deploy from a branch → `gh-pages` / `(root)` → Save**.'
+            echo
+            echo 'The site then answers at https://9997433-bit.github.io/YXHJ/last-watt/'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     needs: build
+    if: needs.build.outputs.pages_source == 'workflow' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write
