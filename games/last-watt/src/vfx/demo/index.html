@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>余电 · VFX Gym</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #070605;
+        color: #dfe9ef;
+        font-family: system-ui, sans-serif;
+      }
+      #lw-gym {
+        margin: 0 auto;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      VFX Gym：只跑 src/vfx + src/ui，不启动引擎与玩法。
+      Vite 下直接访问本文件即可；截图脚本用 ?t=1.2 固定步长快进到某一刻停帧。
+    -->
+    <div id="lw-gym"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

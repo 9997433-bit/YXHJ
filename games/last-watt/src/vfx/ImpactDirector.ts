@@ -145,8 +145,9 @@ export class ImpactDirector {
     if (active) {
       this.stats.shakesMerged++;
       if (tier < this.shakeTier) {
-        // 已有更强的震动在跑，弱请求只能续时长，不能降档
-        this.shakeDurationMs = Math.max(this.shakeDurationMs, this.shakeElapsedMs + durationMs);
+        // 已有更强的震动在跑，弱请求整个丢掉。
+        // 注意不能「只续时长不降档」：衰减包络是 1 - elapsed/duration，
+        // 拉长 duration 会把当前振幅顶上去，等于从后门实现了叠加。
         return;
       }
     }
