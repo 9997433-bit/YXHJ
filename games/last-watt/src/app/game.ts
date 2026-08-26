@@ -117,6 +117,16 @@ export class Game {
         wavesJson as unknown as WaveTableJson,
         map.gates.map((gate) => gate.id),
       ),
+      // M1 ships five blueprints (GDD §19). The catalogue still carries the
+      // flamethrower, the tesla coil and the capacitor with M2 unlock waves in
+      // range of wave 10, so scope is enforced here rather than left to whether
+      // a content table happens to hold the line. The schedule half is the
+      // table's own rule — this only says which blueprints the slice has.
+      //
+      // `this.session` is not assigned yet; the rule is not consulted until
+      // after the constructor returns.
+      isBlueprintUnlocked: (defId, wave) =>
+        M1_DEF_IDS.has(defId) && this.session.build.unlockedByTable(defId, wave),
     });
     this.combat = new CombatSystem({
       terrain: this.session.terrain,

@@ -375,7 +375,13 @@ export class BuildSystem {
     return wave === null ? REASON_MESSAGES.locked : `图纸第 ${wave} 波解锁`;
   }
 
-  private unlockedByTable(defId: string, wave: number): boolean {
+  /**
+   * The default rule, on its own, so a run can compose with it instead of
+   * restating it. A slice that ships a subset of the catalogue needs
+   * "in scope *and* due", and writing the second half again is how the two
+   * copies drift apart.
+   */
+  unlockedByTable(defId: string, wave: number): boolean {
     let unlockWave: number | undefined;
     try {
       unlockWave = this.content.tower(defId).ui.unlockWave;
