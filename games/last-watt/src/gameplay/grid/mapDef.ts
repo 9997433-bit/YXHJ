@@ -18,6 +18,18 @@ export interface GateDef {
   id: string;
   /** Wave from which this gate spawns enemies. Gate 1 is always 1 (GDD §5.2). */
   openWave: number;
+  /**
+   * Waves this gate is active on, when it is not simply "from `openWave`
+   * onwards". Used by the map 1 wave-5 breach, which borrows a side gate for
+   * exactly one wave (GDD §11).
+   */
+  activeWaves?: number[];
+  /**
+   * Explicit spawn cells. Without this the gate is located by its layout digit,
+   * which also forces the cell to `spawn` terrain; a gate sitting behind a
+   * sealed wall has to be declared here instead so its terrain is preserved.
+   */
+  cells?: CellCoord[];
   label?: string;
 }
 
@@ -36,13 +48,23 @@ export interface ZoneDef {
   opensBarrier?: string;
 }
 
+export interface BarrierCell extends CellCoord {
+  /** Per-cell result, overriding `BarrierDef.openTerrain`. */
+  terrain?: TerrainName;
+  /** Marks the opened cell as 可挖路段. */
+  diggable?: boolean;
+}
+
 export interface BarrierDef {
   /** Referenced by `ZoneDef.opensBarrier` and by `Grid.openBarrier()`. */
   id: string;
   /** Terrain the cells become once the barrier opens. */
   openTerrain?: TerrainName;
   /** Extra cells beyond the ones marked in the layout. */
-  cells?: CellCoord[];
+  cells?: BarrierCell[];
+  /** Opens automatically at the start of this wave (map 1's wave-5 breach). */
+  openAtWave?: number;
+  label?: string;
 }
 
 export interface EngineeringQuotaGrant {
@@ -257,8 +279,8 @@ export function validateMapDef(def: MapDef): string[] {
     if (parsed.coreCells.length === 0) problems.push('layout contains no core cell ("C")');
     const seenGateIndices = new Set(parsed.gateCells.map((cell) => cell.gateIndex));
     def.gates.forEach((gate, gateIndex) => {
-      if (!seenGateIndices.has(gateIndex)) {
-        problems.push(`gate "${gate.id}" (index ${gateIndex}) has no cell in the layout`);
+      if (!seenGateIndices.has(gateIndex) && !gate.cells?.length) {
+        problems.push(`gate "${gate.id}" (index ${gateIndex}) has neither a layout cell nor explicit cells`);
       }
     });
     for (const gateIndex of seenGateIndices) {

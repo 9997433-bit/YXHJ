@@ -7,14 +7,17 @@
  * and what the next-wave preview should highlight.
  */
 
-/** Canonical EnemyDef ids. Combat's data table and `data/` must match these. */
+/**
+ * Canonical EnemyDef ids — these mirror `src/combat/data/enemies.ts`, which is
+ * the owner of the enemy catalogue. The wave generator emits these ids.
+ */
 export const ENEMY_IDS = {
   /** 拾荒虫 — the baseline walker. */
-  scavenger: 'scavenger',
+  scavenger: 'scavenger_bug',
   /** 疾行鼠群 — fast and fragile. */
-  sprinter: 'sprinter',
+  sprinter: 'scurry_rats',
   /** 装甲运输车 — armoured, forces combos. */
-  hauler: 'hauler',
+  hauler: 'armored_hauler',
   /** 侦察蜂 — flies straight at the core, ignores the flow field. */
   scoutBee: 'scout_bee',
   /** 爆破工兵/拆迁蟹 — disables towers and blows up player bridges. */
@@ -22,10 +25,34 @@ export const ENEMY_IDS = {
   /** 修理无人机 — heal aura, forces focus fire. */
   repairDrone: 'repair_drone',
   /** 修理母舰 — wave 15 mini boss. */
-  mothership: 'mothership',
+  mothership: 'repair_mothership',
   /** 利维坦 — wave 20 boss. */
   leviathan: 'leviathan',
 } as const;
+
+/**
+ * Round-1 vocabulary drift: the authored tables under `data/` and this module's
+ * first draft each coined their own names for the same eight enemies. Anything
+ * loaded from data is normalised through here so a table written against either
+ * vocabulary still resolves.
+ */
+export const ENEMY_ID_ALIASES: Readonly<Record<string, string>> = {
+  // data/enemies.json
+  swift_rat: ENEMY_IDS.sprinter,
+  armored_truck: ENEMY_IDS.hauler,
+  scout_wasp: ENEMY_IDS.scoutBee,
+  demo_sapper: ENEMY_IDS.sapperCrab,
+  // this module's first draft
+  scavenger: ENEMY_IDS.scavenger,
+  sprinter: ENEMY_IDS.sprinter,
+  hauler: ENEMY_IDS.hauler,
+  demolisher: ENEMY_IDS.sapperCrab,
+  mothership: ENEMY_IDS.mothership,
+};
+
+export function normalizeEnemyId(id: string): string {
+  return ENEMY_ID_ALIASES[id] ?? id;
+}
 
 export type EnemyClass = 'basic' | 'fast' | 'armored' | 'flying' | 'sapper' | 'healer' | 'boss';
 
@@ -87,5 +114,20 @@ export function enemyMetaOf(
   id: string,
   table: Readonly<Record<string, EnemyWaveMeta>> = DEFAULT_ENEMY_WAVE_META,
 ): EnemyWaveMeta {
-  return table[id] ?? meta(id, 'basic', `enemy_${id}`, false, 'normal');
+  return table[id] ?? table[normalizeEnemyId(id)] ?? meta(id, 'basic', `enemy_${id}`, false, 'normal');
+}
+
+/** Class names accepted wherever an enemy id is, e.g. in `firstAppearance`. */
+export const ENEMY_CLASS_NAMES: readonly EnemyClass[] = [
+  'basic',
+  'fast',
+  'armored',
+  'flying',
+  'sapper',
+  'healer',
+  'boss',
+];
+
+export function isEnemyClass(value: string): value is EnemyClass {
+  return (ENEMY_CLASS_NAMES as readonly string[]).includes(value);
 }

@@ -18,8 +18,12 @@ import { checkConnectivity } from './pathing/connectivity';
 import { EngineeringSystem } from './engineering/EngineeringSystem';
 import { GameplayEvents } from './events';
 import { buildWavePlan, MAP_WAVE_MODIFIER_PRESETS } from './waves/waveGenerator';
-import { ENEMY_IDS } from './waves/enemyMeta';
+import { DEFAULT_ENEMY_WAVE_META, ENEMY_IDS } from './waves/enemyMeta';
 import { GameplayWorld } from './world';
+import type { MapJson, WaveTableJson } from './data/importers';
+import { importMapDefJson, importWaveTableJson } from './data/importers';
+import map1Json from '../../data/maps/map1.json';
+import wavesJson from '../../data/waves.map1.json';
 
 export interface CheckResult {
   name: string;
@@ -169,7 +173,7 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     const grid = new Grid(MAP1_POWERHOUSE);
     const field = computeFlowField(grid, grid.coreCells, { blockedPenalty: 1000 });
     let missing = 0;
-    grid.forEachCell((cx, cy, index) => {
+    grid.forEachCell((_cx, _cy, index) => {
       if (field.cost[index] === 0) return;
       if ((field.direction[index] as number) < 0) missing += 1;
     });
@@ -571,6 +575,113 @@ export function runGameplaySelfCheck(): SelfCheckReport {
       openings === 1 && world.grid.gate('gate_south')?.open === true,
       `openings=${openings} southOpen=${world.grid.gate('gate_south')?.open}`,
     );
+  });
+
+  // -- authored data under data/ --------------------------------------------
+  //
+  // These check the *authored* map against the pathing rules rather than this
+  // module's own greybox. A failure here is design feedback for the data track,
+  // not necessarily a bug in the gameplay code.
+
+  checker.check('data/maps/map1.json imports into a valid MapDef', () => {
+    const map = importMapDefJson(map1Json as unknown as MapJson);
+    return expect(
+      map.cols === 20 && map.rows === 12 && map.gates.length === 3 && (map.zones?.length ?? 0) === 2,
+      `cols=${map.cols} gates=${map.gates.length} zones=${map.zones?.length}`,
+    );
+  });
+
+  checker.check('authored map: every live gate reaches the core', () => {
+    const grid = new Grid(importMapDefJson(map1Json as unknown as MapJson));
+    const report = checkConnectivity(grid);
+    return expect(report.ok, `blocked: ${report.blockedGates.join(', ')}`);
+  });
+
+  checker.check('authored map: the wave-5 breach opens a side gate that can path', () => {
+    const grid = new Grid(importMapDefJson(map1Json as unknown as MapJson));
+    const sealed = grid.isWalkable(0, 5);
+    grid.openBarriersForWave(5);
+    const field = computeFlowField(grid, grid.coreCells);
+    return expect(
+      !sealed && grid.isWalkable(0, 5) && isReachable(field, 0, 5),
+      `sealedBefore=${!sealed} walkableAfter=${grid.isWalkable(0, 5)}`,
+    );
+  });
+
+  checker.check('authored map: the side route really is a short-cut worth digging', () => {
+    const grid = new Grid(importMapDefJson(map1Json as unknown as MapJson));
+    const before = costAt(computeFlowField(grid, grid.coreCells), 0, 2);
+    grid.openBarriersForWave(5);
+    const after = costAt(computeFlowField(grid, grid.coreCells), 0, 2);
+    return expect(after < before, `main gate route: ${before} steps → ${after} after the breach`);
+  });
+
+  checker.check('authored map: the recommended free dig at (5,5) is legal once open', () => {
+    const map = importMapDefJson(map1Json as unknown as MapJson);
+    const grid = new Grid(map);
+    const engineering = new EngineeringSystem({ grid });
+    const beforeBreach = engineering.checkDig(5, 5);
+    grid.openBarriersForWave(5);
+    const afterBreach = engineering.checkDig(5, 5);
+    return expect(
+      !beforeBreach.ok && afterBreach.ok,
+      `before=${beforeBreach.reason} after=${afterBreach.reason ?? 'ok'}`,
+    );
+  });
+
+  checker.check('authored map: losing zone B opens the floodgate short-cut', () => {
+    const world = new GameplayWorld({ map: importMapDefJson(map1Json as unknown as MapJson) });
+    const before = costAt(world.groundField, 0, 2);
+    world.applyIntegrity(50);
+    const after = costAt(world.groundField, 0, 2);
+    return expect(
+      after < before && world.grid.terrainAt(13, 7) === 'path',
+      `before=${before} after=${after} gate=${world.grid.terrainAt(13, 7)}`,
+    );
+  });
+
+  checker.check('authored map: the gully takes exactly the whole bridge quota', () => {
+    const map = importMapDefJson(map1Json as unknown as MapJson);
+    const grid = new Grid(map);
+    const engineering = new EngineeringSystem({ grid });
+    const bridgeable = engineering.legalTargets('bridge');
+    return expect(
+      map.engineering.bridgeQuota === 2 &&
+        bridgeable.length === 2 &&
+        bridgeable.every((cell) => cell.cx === 7 && (cell.cy === 8 || cell.cy === 9)),
+      `quota=${map.engineering.bridgeQuota} targets=${bridgeable.map((c) => `${c.cx},${c.cy}`).join(' ')}`,
+    );
+  });
+
+  checker.check('data/waves.map1.json imports and normalises enemy ids', () => {
+    const map = importMapDefJson(map1Json as unknown as MapJson);
+    const table = importWaveTableJson(
+      wavesJson as unknown as WaveTableJson,
+      map.gates.map((gate) => gate.id),
+    );
+    const ids = new Set(table.waves.flatMap((wave) => wave.groups.map((group) => group.enemy)));
+    const unknown = [...ids].filter((id) => !(id in DEFAULT_ENEMY_WAVE_META));
+    return expect(unknown.length === 0, `unrecognised enemy ids: ${unknown.join(', ')}`);
+  });
+
+  checker.check('the authored map and wave table run together end to end', () => {
+    const map = importMapDefJson(map1Json as unknown as MapJson);
+    const waveTable = importWaveTableJson(
+      wavesJson as unknown as WaveTableJson,
+      map.gates.map((gate) => gate.id),
+    );
+    const world = new GameplayWorld({ map, waveTable });
+    let spawned = 0;
+    for (let wave = 0; wave < waveTable.waves.length; wave += 1) {
+      world.startWave();
+      for (let t = 0; t < 300; t += 1 / 60) {
+        spawned += world.tick(1 / 60).length;
+        if (world.waves.spawningComplete) break;
+      }
+      world.waves.notifyWaveCleared();
+    }
+    const expected = world.plan.reduce((total, wave) => total + wave.spawns.length, 0);
+    return expect(spawned === expected && spawned > 0, `spawned=${spawned} expected=${expected}`);
   });
 
   const passed = checker.results.filter((result) => result.ok).length;

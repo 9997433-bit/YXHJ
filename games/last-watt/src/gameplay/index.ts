@@ -55,8 +55,9 @@ export { GameplayEvents, Signal } from './events';
 
 // --- Grid ------------------------------------------------------------------
 export type { BarrierState, GateState, WalkabilityView, ZoneState } from './grid/Grid';
-export { DIRECTIONS, Grid, UNKNOWN_LAYOUT_CHAR } from './grid/Grid';
+export { DIRECTIONS, Grid, UNKNOWN_LAYOUT_CHAR, gateActiveOn } from './grid/Grid';
 export type {
+  BarrierCell,
   BarrierDef,
   EngineeringDef,
   EngineeringQuotaGrant,
@@ -115,7 +116,15 @@ export { DEFAULT_ENGINEERING_CONFIG, EngineeringSystem } from './engineering/Eng
 export type { BaseWaveDef, SpawnGroupDef, WaveTableDef } from './waves/baseWaveTable';
 export { BASE_WAVE_TABLE, WaveTableError, loadWaveTable, validateWaveTable } from './waves/baseWaveTable';
 export type { EnemyClass, EnemyWaveMeta } from './waves/enemyMeta';
-export { DEFAULT_ENEMY_WAVE_META, ENEMY_IDS, enemyMetaOf } from './waves/enemyMeta';
+export {
+  DEFAULT_ENEMY_WAVE_META,
+  ENEMY_CLASS_NAMES,
+  ENEMY_ID_ALIASES,
+  ENEMY_IDS,
+  enemyMetaOf,
+  isEnemyClass,
+  normalizeEnemyId,
+} from './waves/enemyMeta';
 export type {
   GateSchedule,
   ResolvedSpawn,
@@ -143,3 +152,16 @@ export { GameplayWorld, createGameplayWorld } from './world';
 
 // --- Maps ------------------------------------------------------------------
 export { MAP1_POWERHOUSE } from './maps/map1Powerhouse';
+
+// --- data/ importers -------------------------------------------------------
+export type { MapJson, WaveTableJson } from './data/importers';
+export {
+  DataImportError,
+  TERRAIN_NAME_ALIASES,
+  importMapDefJson,
+  importWaveTableJson,
+} from './data/importers';
+
+// --- Self-check ------------------------------------------------------------
+export type { CheckResult, SelfCheckReport } from './selfcheck';
+export { formatSelfCheckReport, runGameplaySelfCheck } from './selfcheck';

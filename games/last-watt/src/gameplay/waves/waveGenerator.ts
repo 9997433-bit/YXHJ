@@ -11,7 +11,7 @@ import type { MapWaveModifiers, WaveOverrideDef } from '../grid/mapDef';
 import type { BaseWaveDef, SpawnGroupDef, WaveTableDef } from './baseWaveTable';
 import { BASE_WAVE_TABLE, loadWaveTable } from './baseWaveTable';
 import type { EnemyClass, EnemyWaveMeta } from './enemyMeta';
-import { DEFAULT_ENEMY_WAVE_META, ENEMY_IDS, enemyMetaOf } from './enemyMeta';
+import { DEFAULT_ENEMY_WAVE_META, ENEMY_IDS, enemyMetaOf, isEnemyClass } from './enemyMeta';
 
 export interface GateSchedule {
   id: string;
@@ -271,8 +271,13 @@ function applyFirstAppearance(
   const schedule = modifiers.firstAppearance;
   if (!schedule) return groups;
 
+  // Keys may be an enemy id or a class name, so `{ flying: 4 }` and
+  // `{ scout_bee: 4 }` mean the same thing.
+  const firstWaveOf = (enemy: string): number | undefined =>
+    schedule[enemy] ?? schedule[enemyMetaOf(enemy, metaTable).class];
+
   const result = groups.map((group) => {
-    const first = schedule[group.enemy];
+    const first = firstWaveOf(group.enemy);
     if (first === undefined || wave >= first) return group;
     const substitute = enemyMetaOf(group.enemy, metaTable).substitute;
     if (!substitute) return { ...group, count: 0 };
@@ -282,12 +287,25 @@ function applyFirstAppearance(
   const kept = result.filter((group) => group.count > 0);
   if (modifiers.injectOnFirstAppearance === false) return kept;
 
-  for (const [enemy, first] of Object.entries(schedule)) {
+  for (const [key, first] of Object.entries(schedule)) {
     if (first !== wave) continue;
+    const enemy = isEnemyClass(key) ? representativeOf(key, metaTable) : key;
+    if (!enemy) continue;
     if (kept.some((group) => group.enemy === enemy)) continue;
     kept.push({ enemy, count: squadSize, interval: 5, delay: 4 });
   }
   return kept;
+}
+
+/** The enemy a class-keyed schedule entry should inject. */
+function representativeOf(
+  cls: EnemyClass,
+  metaTable: Readonly<Record<string, EnemyWaveMeta>>,
+): string | null {
+  for (const meta of Object.values(metaTable)) {
+    if (meta.class === cls) return meta.id;
+  }
+  return null;
 }
 
 /**

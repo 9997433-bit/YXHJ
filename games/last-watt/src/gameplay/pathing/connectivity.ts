@@ -108,6 +108,11 @@ export function checkConnectivity(
 
   const blockedGates: string[] = [];
   for (const gate of gates) {
+    // A gate still sealed behind a wall (map 1's wave-5 breach) is not spawning
+    // and cannot be cut off by a dig. It becomes protected the moment the wall
+    // comes down. Judged on the real grid, not the overlay, so a job that seals
+    // a live gate is still caught.
+    if (!gate.cells.some((cell) => grid.isWalkable(cell.cx, cell.cy))) continue;
     const connected = gate.cells.some((cell) => reachable[cell.cy * grid.cols + cell.cx] === 1);
     if (!connected) blockedGates.push(gate.id);
   }

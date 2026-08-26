@@ -11,7 +11,7 @@
 
 import type { CellCoord, CellData, TerrainName } from '../types';
 import { CellFlag, TERRAIN_CODES, TERRAIN_NAMES, TERRAIN_TRAITS } from '../types';
-import type { BarrierDef, MapDef, ZoneDef } from './mapDef';
+import type { BarrierCell, BarrierDef, MapDef, ZoneDef } from './mapDef';
 import { loadMapDef, parseMapLayout, resolveLegend, zoneCells } from './mapDef';
 
 export interface GateState {
@@ -19,8 +19,16 @@ export interface GateState {
   index: number;
   openWave: number;
   open: boolean;
+  /** When set, the gate only spawns on exactly these waves. */
+  activeWaves?: number[];
   cells: CellCoord[];
   label?: string;
+}
+
+/** Does this gate send enemies on the given wave? */
+export function gateActiveOn(gate: { openWave: number; activeWaves?: number[] }, wave: number): boolean {
+  if (gate.activeWaves) return gate.activeWaves.includes(wave);
+  return gate.openWave <= wave;
 }
 
 export interface ZoneState {
@@ -34,7 +42,7 @@ export interface BarrierState {
   def: BarrierDef;
   id: string;
   open: boolean;
-  cells: CellCoord[];
+  cells: BarrierCell[];
   openTerrain: TerrainName;
 }
 
@@ -99,22 +107,29 @@ export class Grid implements WalkabilityView {
     this.coreCells = parsed.coreCells;
 
     this.def.gates.forEach((gateDef, index) => {
+      const fromLayout = parsed.gateCells
+        .filter((cell) => cell.gateIndex === index)
+        .map(({ cx, cy }) => ({ cx, cy }));
       this.gates.push({
         id: gateDef.id,
         index,
         openWave: gateDef.openWave,
         open: gateDef.openWave <= 1,
-        cells: parsed.gateCells
-          .filter((cell) => cell.gateIndex === index)
-          .map(({ cx, cy }) => ({ cx, cy })),
+        activeWaves: gateDef.activeWaves,
+        cells: gateDef.cells?.length ? gateDef.cells.map(({ cx, cy }) => ({ cx, cy })) : fromLayout,
         label: gateDef.label,
       });
     });
 
     (this.def.barriers ?? []).forEach((barrierDef, index) => {
-      const cells: CellCoord[] = [];
+      const declared = new Map<number, BarrierCell>();
+      for (const cell of barrierDef.cells ?? []) {
+        declared.set(this.index(cell.cx, cell.cy), cell);
+      }
+      const cells: BarrierCell[] = [];
       for (let i = 0; i < this.size; i += 1) {
-        if (this.barrierIndex[i] === index) cells.push(this.coordOf(i));
+        if (this.barrierIndex[i] !== index) continue;
+        cells.push(declared.get(i) ?? this.coordOf(i));
       }
       const state: BarrierState = {
         def: barrierDef,
@@ -238,12 +253,16 @@ export class Grid implements WalkabilityView {
     return this.hasFlag(cx, cy, CellFlag.Geothermal);
   }
 
-  /** 可挖路段: marked at authoring time and still a road (GDD §5.1). */
+  /**
+   * 可挖路段 (GDD §5.1): marked at authoring time. Roads and puddles are the
+   * headline case; bare soft soil is also diggable where a map marks it, which
+   * is what lets a player dig-then-bridge a brand new cell of road.
+   */
   isDiggable(cx: number, cy: number): boolean {
     if (!this.hasFlag(cx, cy, CellFlag.Diggable)) return false;
     if (this.hasFlag(cx, cy, CellFlag.UnderConstruction)) return false;
     const terrain = this.terrainAt(cx, cy);
-    return terrain === 'path' || terrain === 'puddle';
+    return terrain === 'path' || terrain === 'puddle' || terrain === 'soft_soil';
   }
 
   isBridgeable(cx: number, cy: number): boolean {
@@ -287,17 +306,17 @@ export class Grid implements WalkabilityView {
     return this.gates.find((gate) => gate.id === id);
   }
 
-  /** Gates already spawning at the given wave. */
+  /** Gates spawning at the given wave. */
   openGates(wave?: number): GateState[] {
     if (wave === undefined) return this.gates.filter((gate) => gate.open);
-    return this.gates.filter((gate) => gate.openWave <= wave);
+    return this.gates.filter((gate) => gateActiveOn(gate, wave));
   }
 
   /** Opens every gate whose schedule has come due; returns the newly opened. */
   syncGatesToWave(wave: number): GateState[] {
     const opened: GateState[] = [];
     for (const gate of this.gates) {
-      if (!gate.open && gate.openWave <= wave) {
+      if (!gate.open && gateActiveOn(gate, wave)) {
         gate.open = true;
         opened.push(gate);
       }
@@ -342,11 +361,23 @@ export class Grid implements WalkabilityView {
     if (!barrier || barrier.open) return [];
     barrier.open = true;
     for (const cell of barrier.cells) {
-      this.setTerrain(cell.cx, cell.cy, barrier.openTerrain, { silent: true });
+      this.setTerrain(cell.cx, cell.cy, cell.terrain ?? barrier.openTerrain, { silent: true });
       this.setFlag(cell.cx, cell.cy, CellFlag.Barrier, false);
+      if (cell.diggable) this.setFlag(cell.cx, cell.cy, CellFlag.Diggable, true);
     }
     this.version += 1;
-    return barrier.cells;
+    return barrier.cells.map(({ cx, cy }) => ({ cx, cy }));
+  }
+
+  /** Opens every barrier scheduled for this wave; returns the ones opened. */
+  openBarriersForWave(wave: number): BarrierState[] {
+    const opened: BarrierState[] = [];
+    for (const barrier of this.barrierStates) {
+      if (barrier.open || barrier.def.openAtWave !== wave) continue;
+      this.openBarrier(barrier.id);
+      opened.push(barrier);
+    }
+    return opened;
   }
 
   // -------------------------------------------------------------------------

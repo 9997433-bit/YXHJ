@@ -135,6 +135,24 @@ C  核心              1/2/3 出怪口   L/M/N 闸门组   F  泄洪道      g  
 
 ---
 
+## 接 `data/` 的正式配表
+
+`data/importers.ts` 是单向适配器：`data/` 保持它自己那套可读的 snake_case 设计稿，`MapDef` / `WaveTableDef` 保持运行时形状，两边都不用迁就对方。
+
+```ts
+import mapJson from '../../data/maps/map1.json';
+import wavesJson from '../../data/waves.map1.json';
+import { importMapDefJson, importWaveTableJson, createGameplayWorld } from '@/gameplay';
+
+const map = importMapDefJson(mapJson as unknown as MapJson);
+const waveTable = importWaveTableJson(wavesJson as unknown as WaveTableJson, map.gates.map((g) => g.id));
+const world = createGameplayWorld({ map, waveTable });
+```
+
+导入时会跑完整校验（`loadMapDef` / `loadWaveTable`），配表写错在加载期就炸，不会变成三个系统之后的诡异寻路 bug。`selfcheck.ts` 里有 9 条断言专门跑**已授权的** `data/maps/map1.json`：三个出怪口都能到核心、波 5 炸墙后支路真的更短、推荐的免费挖沟格 (5,5) 在炸墙前非法炸墙后合法、丢 B 区闸门确实开出捷径、沟壑恰好吃满 2 次搭桥配额。这些是给数据轨的设计反馈，不是本模块的单测。
+
+> **⚠️ Round 1 遗留：敌人 id 有三套命名。** `src/combat/data/enemies.ts`（`scurry_rats` / `armored_hauler` / `scout_bee` / `sapper_crab`）、`data/enemies.json`（`swift_rat` / `armored_truck` / `scout_wasp` / `demo_sapper`）、本模块初稿各写了一套。本模块**以 combat 的代码表为准**（它是 EnemyDef 的所有者），并用 `ENEMY_ID_ALIASES` / `normalizeEnemyId()` 把另外两套映射过去，所以现在两边都能跑。但这是权宜之计，需要主调度在 Round 2 裁一次统一命名，然后把别名表删掉。
+
 ## 灰盒图 1「主厂房」
 
 `maps/map1Powerhouse.ts` 是一张**系统优先**的灰盒图，专门把本模块要支持的机制全部跑通（正式关卡设计仍应落在 `data/`）：

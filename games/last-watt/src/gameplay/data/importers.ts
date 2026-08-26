@@ -1,0 +1,300 @@
+/**
+ * Importers for the authored tables under `games/last-watt/data/`.
+ *
+ * Those files are owned by the systems/data track and use their own snake_case
+ * schema; this module is the one-way adapter into the gameplay types. Keeping
+ * the translation here means neither side has to bend: `data/` stays a readable
+ * design document, `MapDef`/`WaveTableDef` stay the runtime shape.
+ *
+ * Everything is validated on the way in — `loadMapDef` and `loadWaveTable` run
+ * at the end of each import, so a malformed table fails loudly at load rather
+ * than as a mystery pathing bug three systems later.
+ */
+
+import type { CellCoord, TerrainName } from '../types';
+import { CellFlag } from '../types';
+import type {
+  BarrierCell,
+  BarrierDef,
+  EngineeringQuotaGrant,
+  GateDef,
+  LegendEntry,
+  MapDef,
+  MapWaveModifiers,
+  ZoneDef,
+} from '../grid/mapDef';
+import { loadMapDef } from '../grid/mapDef';
+import type { BaseWaveDef, SpawnGroupDef, WaveTableDef } from '../waves/baseWaveTable';
+import { loadWaveTable } from '../waves/baseWaveTable';
+import { normalizeEnemyId } from '../waves/enemyMeta';
+
+// ---------------------------------------------------------------------------
+// JSON shapes (only the fields the runtime consumes)
+// ---------------------------------------------------------------------------
+
+type Cell2 = [number, number];
+
+export interface MapJson {
+  id: string;
+  name_cn?: string;
+  grid_size: [number, number];
+  legend: Record<string, { terrain: string; diggable?: boolean; bridgeable?: boolean }>;
+  terrain_rows: string[];
+  core: Cell2 | Cell2[];
+  gates: Array<{
+    id: string;
+    name_cn?: string;
+    cell: Cell2;
+    active_from_wave?: number;
+    active_waves?: number[];
+    enabled_by_event?: string;
+  }>;
+  event_cells?: Array<{
+    event: string;
+    trigger?: { type: string; wave?: number; value?: number };
+    cells: Array<{ cell: Cell2; becomes: string }>;
+  }>;
+  zones?: Array<{
+    id: string;
+    name_cn?: string;
+    lost_below_integrity: number;
+    cells: Cell2[];
+    on_lost?: { power_cap_delta?: number; open_event?: string };
+  }>;
+  engineering?: {
+    dig_quota?: number;
+    bridge_quota?: number;
+    grants?: Array<{ wave: number; type: 'dig' | 'bridge'; count?: number }>;
+  };
+  wave_multipliers?: {
+    enemy_hp?: number;
+    weight_fly_heal?: number;
+    weight_demolisher?: number;
+  };
+  first_appearance_waves?: Record<string, number>;
+}
+
+export interface WaveTableJson {
+  map_id?: string;
+  waves: Array<{
+    wave_no: number;
+    reward?: number;
+    teach?: string;
+    script_events?: string[];
+    spawns: Array<{
+      enemy_id: string;
+      count: number;
+      interval_s?: number;
+      start_delay_s?: number;
+      gate_id?: string;
+    }>;
+  }>;
+}
+
+export class DataImportError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DataImportError';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Terrain vocabulary
+// ---------------------------------------------------------------------------
+
+/** `data/` terrain names → gameplay terrain. */
+export const TERRAIN_NAME_ALIASES: Readonly<Record<string, TerrainName>> = {
+  wasteland: 'rock',
+  foundation: 'ground',
+  road: 'path',
+  diggable_road: 'path',
+  soft_earth: 'soft_soil',
+  gully: 'trench',
+  puddle_road: 'puddle',
+  locked_road: 'rock',
+  event_sealed: 'rock',
+  core: 'core',
+  bridge: 'bridge',
+  water: 'water',
+  spawn: 'spawn',
+};
+
+function toTerrain(name: string, context: string): TerrainName {
+  const terrain = TERRAIN_NAME_ALIASES[name];
+  if (!terrain) throw new DataImportError(`${context}: unknown terrain "${name}"`);
+  return terrain;
+}
+
+/** `data/` first-appearance class keys → gameplay enemy classes. */
+const CLASS_KEY_ALIASES: Readonly<Record<string, string>> = {
+  flyer: 'flying',
+  demolisher: 'sapper',
+  healer: 'healer',
+};
+
+// ---------------------------------------------------------------------------
+// Map import
+// ---------------------------------------------------------------------------
+
+export function importMapDefJson(json: MapJson): MapDef {
+  const [cols, rows] = json.grid_size;
+  const context = `map "${json.id}"`;
+
+  // The layout characters keep their authored meaning; only the terrain
+  // vocabulary is translated. `diggable` on a legend entry becomes a cell flag.
+  const legend: Record<string, LegendEntry> = {};
+  for (const [char, entry] of Object.entries(json.legend)) {
+    legend[char] = {
+      terrain: toTerrain(entry.terrain, `${context} legend "${char}"`),
+      flags: entry.diggable ? CellFlag.Diggable : 0,
+    };
+  }
+
+  const coreCells: CellCoord[] = (isCellList(json.core) ? json.core : [json.core]).map(toCoord);
+  // The core is the flow-field goal, so it has to be enterable whatever the
+  // authored legend says about it.
+  for (const cell of coreCells) {
+    const char = charAt(json.terrain_rows, cell, context);
+    legend[char] = { terrain: 'core', core: true };
+  }
+
+  const barriers: BarrierDef[] = [];
+  const barrierByEvent = new Map<string, number>();
+  for (const event of json.event_cells ?? []) {
+    const cells: BarrierCell[] = event.cells.map((entry) => {
+      const coord = toCoord(entry.cell);
+      const terrain = toTerrain(entry.becomes, `${context} event "${event.event}"`);
+      return { ...coord, terrain, diggable: entry.becomes === 'diggable_road' };
+    });
+    const def: BarrierDef = { id: event.event, openTerrain: 'path', cells, label: event.event };
+    if (event.trigger?.type === 'wave_start' && event.trigger.wave !== undefined) {
+      def.openAtWave = event.trigger.wave;
+    }
+    barrierByEvent.set(event.event, barriers.length);
+    barriers.push(def);
+  }
+
+  const gates: GateDef[] = json.gates.map((gate) => ({
+    id: gate.id,
+    openWave: gate.active_from_wave ?? gate.active_waves?.[0] ?? 1,
+    activeWaves: gate.active_waves,
+    cells: [toCoord(gate.cell)],
+    label: gate.name_cn,
+  }));
+
+  const zones: ZoneDef[] = (json.zones ?? []).map((zone) => ({
+    id: zone.id,
+    label: zone.name_cn,
+    cells: zone.cells.map(toCoord),
+    triggerIntegrity: zone.lost_below_integrity,
+    powerPenalty: Math.abs(zone.on_lost?.power_cap_delta ?? 0),
+    opensBarrier: zone.on_lost?.open_event,
+  }));
+
+  const grants: EngineeringQuotaGrant[] = (json.engineering?.grants ?? []).map((grant) => ({
+    wave: grant.wave,
+    dig: grant.type === 'dig' ? (grant.count ?? 1) : 0,
+    bridge: grant.type === 'bridge' ? (grant.count ?? 1) : 0,
+  }));
+
+  const def: MapDef = {
+    id: json.id,
+    name: json.name_cn ?? json.id,
+    cols,
+    rows,
+    layout: json.terrain_rows,
+    legend,
+    gates,
+    barriers,
+    zones,
+    engineering: {
+      digQuota: json.engineering?.dig_quota ?? 0,
+      bridgeQuota: json.engineering?.bridge_quota ?? 0,
+      grants,
+    },
+    waveModifiers: importWaveModifiers(json),
+  };
+
+  // Referenced but undeclared events would silently disable a zone's shortcut.
+  for (const zone of zones) {
+    if (zone.opensBarrier && !barrierByEvent.has(zone.opensBarrier)) {
+      throw new DataImportError(
+        `${context}: zone "${zone.id}" opens event "${zone.opensBarrier}" which has no event_cells entry`,
+      );
+    }
+  }
+
+  return loadMapDef(def);
+}
+
+function importWaveModifiers(json: MapJson): MapWaveModifiers {
+  const multipliers = json.wave_multipliers ?? {};
+  const flyHeal = multipliers.weight_fly_heal ?? 1;
+
+  const firstAppearance: Record<string, number> = {};
+  for (const [key, wave] of Object.entries(json.first_appearance_waves ?? {})) {
+    firstAppearance[CLASS_KEY_ALIASES[key] ?? normalizeEnemyId(key)] = wave;
+  }
+
+  return {
+    hpMultiplier: multipliers.enemy_hp ?? 1,
+    countMultipliers: {
+      flying: flyHeal,
+      healer: flyHeal,
+      sapper: multipliers.weight_demolisher ?? 1,
+    },
+    firstAppearance,
+    injectOnFirstAppearance: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Wave table import
+// ---------------------------------------------------------------------------
+
+/**
+ * @param gateIds gate order of the target map, used to turn `gate_id` strings
+ *                into the generator's gate indices. Unknown ids fall back to
+ *                `'spread'` so a partially authored table still runs.
+ */
+export function importWaveTableJson(json: WaveTableJson, gateIds: readonly string[] = []): WaveTableDef {
+  const waves: BaseWaveDef[] = json.waves.map((wave) => {
+    const groups: SpawnGroupDef[] = wave.spawns.map((spawn) => {
+      const gateIndex = spawn.gate_id ? gateIds.indexOf(spawn.gate_id) : -1;
+      return {
+        enemy: normalizeEnemyId(spawn.enemy_id),
+        count: spawn.count,
+        interval: spawn.interval_s ?? 1,
+        delay: spawn.start_delay_s ?? 0,
+        gate: gateIndex >= 0 ? gateIndex : 'spread',
+      };
+    });
+
+    return {
+      wave: wave.wave_no,
+      groups,
+      reward: wave.reward,
+      script: wave.script_events?.[0],
+      note: wave.teach,
+    };
+  });
+
+  return loadWaveTable({ id: json.map_id ?? 'imported', waves });
+}
+
+// ---------------------------------------------------------------------------
+
+function isCellList(value: Cell2 | Cell2[]): value is Cell2[] {
+  return Array.isArray(value[0]);
+}
+
+function toCoord(cell: Cell2): CellCoord {
+  return { cx: cell[0], cy: cell[1] };
+}
+
+function charAt(rows: readonly string[], cell: CellCoord, context: string): string {
+  const row = rows[cell.cy];
+  const char = row?.[cell.cx];
+  if (!char) throw new DataImportError(`${context}: cell ${cell.cx},${cell.cy} is outside the layout`);
+  return char;
+}
