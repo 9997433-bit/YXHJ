@@ -79,10 +79,6 @@ export const IMPACT_PRESETS = {
     flash: { color: PALETTE.fire, holdMs: 17, decayMs: 140, intensity: 0.5 },
     shake: { tier: ShakeTier.Medium, durationMs: 260 },
   },
-  /** 破碎锤命中：不给顿帧（每 2.5s 一次会糊），只给极轻的震 */
-  hammer: {
-    shake: { tier: ShakeTier.Light, durationMs: 90 },
-  },
 } as const;
 
 const TRANSPARENT: RGBA = [0, 0, 0, 0];

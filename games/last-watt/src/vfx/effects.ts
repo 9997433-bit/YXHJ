@@ -4,6 +4,7 @@ import type { DecalManager } from './DecalManager';
 import type { GpuParticleSystem } from './GpuParticleSystem';
 import type { VfxBudget } from './budget';
 import { IMPACT_PRESETS, ShakeTier, type ImpactDirector } from './ImpactDirector';
+
 import { PALETTE, boost, withAlpha, type RGBA } from './palette';
 import { VfxPriority, type Vec3Like } from './events';
 
@@ -196,6 +197,7 @@ export function emitCondenseMistPuff(ctx: VfxContext, params: MistParams, amount
   // 雾要「铺满射程再停住」：初速按射程算，阻尼把它刹在锥尾
   const drag = 2.2;
   const speed = params.range * drag * 0.62;
+  // α 0.15–0.35 冰白（VISUAL_BIBLE 10.2）：雾要能被看穿，不许糊掉敌人轮廓
 
   return emit(ctx, VfxPriority.Persistent, {
     count: amount,
@@ -288,11 +290,9 @@ export function playHammerImpact(
     blend: 'alpha',
   });
 
-  // 锤击不给顿帧：2.5s 一次的常规攻击一旦顿帧，冰碎的 60ms 就不值钱了
-  ctx.impact.requestShake(
-    IMPACT_PRESETS.hammer.shake.tier,
-    IMPACT_PRESETS.hammer.shake.durationMs * scale,
-  );
+  // 破碎锤**不给顿帧、不给震屏**（VISUAL_BIBLE 10.3）：
+  // 打击感来自蓄力节奏 + 目标闪白 + 音效。只有当它把冻结目标打出冰碎时，
+  // 才由 playIceShatter 吃那一份事件级冲击——这样 60ms 顿帧才保得住稀缺性。
 }
 
 // ---------------------------------------------------------------------------

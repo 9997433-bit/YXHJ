@@ -199,8 +199,9 @@ export class VfxSystem {
       id,
       kind,
       index: id,
-      // 每秒 34 粒：锥形雾要连成面，但持续状态不许吃大粒子量（GDD 15.2 规则 ②）
-      rate: 34,
+      // 每秒 55 粒 × 0.85s 寿命 ≈ 单塔峰值 47 粒，远低于 VISUAL_BIBLE 10.2 的 150 上限；
+      // 持续状态不许吃大粒子量（GDD 15.2 规则 ②）
+      rate: 55,
       accumulator: 0,
       alive: true,
       params: mist,
