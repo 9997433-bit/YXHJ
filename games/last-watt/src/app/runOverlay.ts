@@ -29,6 +29,7 @@ const CSS = `
 /* A pause has to stay out of the way: the whole point is reading the board. */
 #lw-run-overlay[data-mode='paused'] { align-items: flex-start; padding-top: 84px; }
 #lw-run-overlay[data-mode='paused'] .lw-ro__card {
+  min-width: 0;
   padding: 7px 16px;
   border-color: rgba(53, 224, 255, 0.4);
   background: rgba(10, 8, 7, 0.72);
