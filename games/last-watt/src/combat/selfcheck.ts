@@ -1,11 +1,12 @@
 /**
  * Dependency-free self-check for the combat module.
  *
- * Two things it proves that a type-checker cannot:
+ * Three things it proves that a type-checker cannot:
  *   1. every tower / upgrade / enemy / boss-phase id in the runtime tables is
  *      a primary key from `games/last-watt/data/*.json` (Round 2 ruling 3), and
  *      no Round 1 combat-private name survives as anything but an alias;
- *   2. the three stable VFX signals of `vfxSignals.ts` actually fire, with the
+ *   2. every build and upgrade price equals the one in `data/towers.json`;
+ *   3. the three stable VFX signals of `vfxSignals.ts` actually fire, with the
  *      lifecycle `src/vfx` is told to expect.
  *
  *   npx vite-node src/combat/selfcheck.run.ts
@@ -26,7 +27,7 @@ import {
   resolveUpgradeId,
 } from './data/ids';
 import { OpenFieldTerrain } from './ports';
-import { runIceShatterProbe, runOverloadProbe } from './scenarios';
+import { runFrozenPriorityProbe, runIceShatterProbe, runOverloadProbe } from './scenarios';
 import { COMBAT_VFX_SIGNALS } from './vfxSignals';
 
 export interface CheckResult {
@@ -109,6 +110,22 @@ export function runCombatSelfCheck(): SelfCheckReport {
       extra.length === 0 && absent.length === 0,
       `not in JSON: [${extra.join(', ')}]; not implemented: [${absent.join(', ')}]`,
     );
+  });
+
+  checker.check('build and upgrade prices match data/towers.json', () => {
+    const jsonPrice = new Map<string, number>();
+    for (const tower of towersJson.towers) {
+      jsonPrice.set(tower.id, tower.cost);
+      for (const upgrade of tower.upgrades ?? []) jsonPrice.set(upgrade.id, upgrade.cost);
+    }
+    const drift: string[] = [];
+    const compare = (id: string, cost: number): void => {
+      const price = jsonPrice.get(id);
+      if (price !== cost) drift.push(`${id} code=${cost} json=${String(price)}`);
+    };
+    for (const tower of DEFAULT_CONTENT.towers) compare(tower.id, tower.cost);
+    for (const upgrade of DEFAULT_CONTENT.upgrades) compare(upgrade.id, upgrade.cost);
+    return expect(drift.length === 0, drift.join('; '));
   });
 
   checker.check('boss phase ids match data/enemies.json', () => {
@@ -213,6 +230,19 @@ export function runCombatSelfCheck(): SelfCheckReport {
       `signals=[${shatter.signals.join(', ')}]`,
     );
   });
+
+  const priority = runFrozenPriorityProbe();
+
+  checker.check('the breaker swings at the frozen target, not the leader', () =>
+    expect(
+      priority.breakerHitEnemyId === priority.frozenEnemyId && priority.shattered,
+      JSON.stringify(priority),
+    ),
+  );
+
+  checker.check('a tower with no priority status still takes the leader', () =>
+    expect(priority.machineGunTargetId === priority.leaderEnemyId, JSON.stringify(priority)),
+  );
 
   const overload = runOverloadProbe();
 

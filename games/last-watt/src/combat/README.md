@@ -20,8 +20,9 @@ layer binds to three stable signals instead of to reaction row ids (§6.1).
 So there is exactly one file that says what a combo is — [`data/reactions.ts`](data/reactions.ts) —
 and the code that runs it ([`reaction/engine.ts`](reaction/engine.ts)) contains no
 mention of ice, fire, lightning or overload. Grep the runtime for `frozen` and you
-will find the status table, the frozen VFX signal name, and nothing else — no
-branch anywhere decides what to do because a target happens to be frozen.
+will find the status table, the frozen VFX signal name, and the breaker's
+`priorityStatuses` list (§4.1) — all three are data. No branch anywhere decides
+what to do because a target happens to be frozen.
 
 Adding a fifth combo is a new row. Adding a new *verb* means one entry in
 `reaction/conditions.ts` or `reaction/effects.ts` — those two registries are the
@@ -100,7 +101,7 @@ vfxSignals.ts     the three stable VFX signal payloads (see §6.1)
 ports.ts          inbound seams + headless defaults
 terrain.ts        cell coating field (oil / fire)
 damage.ts         damage request/result + balance telemetry
-targeting.ts      first / strongest / air, cones, chains
+targeting.ts      first / strongest / air + priority statuses, cones, chains
 combatSystem.ts   orchestrator; implements ReactionRuntime
 scenarios.ts      headless probes (see §7)
 selfcheck.ts      id parity + signal lifecycle assertions
@@ -177,6 +178,29 @@ slow strength, and the capacitor's overload/overheat windows.
 sources tagged `splash`, `dot` or `chain`, and the shatter's own splash is
 declared `canTriggerReactions: false`. There is no chain-reaction path through
 the table (`SYSTEMS.md` decision D3).
+
+### 4.1 Who gets hit: priority statuses
+
+The table decides what a hit *does*; `targeting.ts` decides who receives it, and
+the two have to agree or the combo never happens. A freeze lasts 2s while the
+breaker swings every 2.5s, so a breaker picking targets in plain path order
+mostly hits whoever is *not* frozen and a whole wave yields one or two shatters
+(observed in Round 2).
+
+Round 3 ruling 1 fixes that with one more data field rather than a rule about
+ice. Any attack may list statuses that jump the queue:
+
+```ts
+// data/towers.ts — the breaker, the only tower whose single hit clears 40
+attack: { kind: 'melee', damage: 45, /* ... */ priorityStatuses: ['frozen'] }
+```
+
+A target carrying one of those statuses outranks the rest of the field; the
+tower's strategy (`first` / `strongest`) orders what is left, and an explicitly
+chosen `air` strategy still wins over the preference, so arming a tower against
+flyers does what it says. `targeting.ts` names no status, and towers that
+declare nothing target exactly as before — the self-check (§7) asserts both
+halves.
 
 ---
 
@@ -265,7 +289,7 @@ self-check asserts that.
 `scenarios.ts` runs combat headlessly — no renderer, no grid module, no game loop:
 
 ```ts
-import { runIceShatterProbe, runOverloadProbe } from '@/combat';
+import { runFrozenPriorityProbe, runIceShatterProbe, runOverloadProbe } from '@/combat';
 const report = runIceShatterProbe();
 ```
 
@@ -276,10 +300,13 @@ contracts above — id parity against `data/*.json` and the signal lifecycles:
 npx vite-node src/combat/selfcheck.run.ts
 ```
 
-16 assertions, currently all passing. It reads `data/towers.json` and
+19 assertions, currently all passing. It reads `data/towers.json` and
 `data/enemies.json` directly and diffs them against the runtime tables in both
-directions, so a tower added to one and not the other fails here rather than
-three systems downstream.
+directions — ids **and** prices — so a tower added to one and not the other, or
+an upgrade repriced in one and not the other, fails here rather than three
+systems downstream. `data/towers.json` is the tuning source of record: every
+`cost` in `data/towers.ts` and `data/upgrades.ts` is a copy of a number in that
+file, and this check is what keeps it a copy.
 
 The probe walks the whole GDD §7.3.1 chain and returns what happened. Current
 results, all matching the GDD:
@@ -314,7 +341,13 @@ Three resolution details worth knowing, all deliberate:
   grey "-5" chip floater reads `absorbedByArmor`, so the wave-3 lesson survives
   the floor.
 
-For `R2-G1` (tests): assert against `runIceShatterProbe()`, `runOverloadProbe()`
+`runFrozenPriorityProbe()` is the §4.1 rule in one deterministic frame: a breaker
+in reach of two identical haulers, the frozen one trailing and the healthy one
+leading. It reports who the breaker swung at, whether the swing shattered, and
+who the machine gun standing beside it locked on to instead.
+
+For `R2-G1` (tests): assert against `runIceShatterProbe()`, `runOverloadProbe()`,
+`runFrozenPriorityProbe()`
 and `runCombatSelfCheck()`, and build new probes out of `CombatSystem` +
 `OpenFieldTerrain` directly — no mocking needed, every external dependency is
 already a port with a headless default. The shatter report now also carries the
