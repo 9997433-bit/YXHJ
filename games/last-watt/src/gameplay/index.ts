@@ -184,6 +184,8 @@ export type {
 } from './integration/combatPort';
 export type { CombatLinkOptions, DefeatReason, EnemyRecord } from './integration/CombatLink';
 export { CombatLink } from './integration/CombatLink';
+export type { StubCombatOptions, StubEnemyDef } from './integration/stubCombat';
+export { STUB_ENEMY_DEFAULT, STUB_TOWERS, StubCombat, StubEnemy } from './integration/stubCombat';
 
 // --- Player commands (GDD §14.1) -------------------------------------------
 export type {

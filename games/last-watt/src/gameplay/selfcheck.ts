@@ -20,6 +20,8 @@ import { GameplayEvents } from './events';
 import { buildWavePlan, MAP_WAVE_MODIFIER_PRESETS } from './waves/waveGenerator';
 import { DEFAULT_ENEMY_WAVE_META, ENEMY_IDS } from './waves/enemyMeta';
 import { GameplayWorld } from './world';
+import { GameSession } from './session/GameSession';
+import { StubCombat } from './integration/stubCombat';
 import type { MapJson, WaveTableJson } from './data/importers';
 import { importMapDefJson, importWaveTableJson } from './data/importers';
 import map1Json from '../../data/maps/map1.json';
@@ -69,6 +71,50 @@ function freshWorld(): GameplayWorld {
 function settle(world: GameplayWorld, seconds = 4): void {
   const step = 1 / 60;
   for (let t = 0; t < seconds; t += step) world.engineering.tick(step);
+}
+
+interface WiredSession {
+  session: GameSession;
+  combat: StubCombat;
+}
+
+/**
+ * A session with the stand-in combat attached, i.e. the full R2 wiring:
+ * occupancy, spawns, bounties, leaks, blackouts and the bridge round-trip.
+ */
+function wiredSession(
+  options: { gold?: number; integrity?: number; unlockAll?: boolean } = {},
+): WiredSession {
+  const session = new GameSession({
+    map: MAP1_POWERHOUSE,
+    events: new GameplayEvents(),
+    economy: {
+      ...(options.gold !== undefined ? { startingGold: options.gold } : {}),
+      ...(options.integrity !== undefined ? { maxIntegrity: options.integrity } : {}),
+    },
+    enemyMeta: DEFAULT_ENEMY_WAVE_META,
+    ...(options.unlockAll ? { isBlueprintUnlocked: (): boolean => true } : {}),
+  });
+  const combat = new StubCombat({
+    movement: session.movement,
+    terrain: session.terrain,
+    enemies: {
+      [ENEMY_IDS.sapperCrab]: { destroysBridges: true, speed: 2 },
+      [ENEMY_IDS.leviathan]: { lossOnLeak: true, integrityDamage: 100 },
+    },
+  });
+  session.attachCombat(combat);
+  return { session, combat };
+}
+
+/** Runs one wave to the end: spawn everything, wipe the field, collect. */
+function playWave(wired: WiredSession, options: { early?: boolean } = {}): void {
+  wired.session.startWave(options);
+  for (let t = 0; t < 60 * 300 && !wired.session.world.waves.spawningComplete; t += 1) {
+    wired.session.tick(1 / 60);
+  }
+  wired.combat.killAll();
+  wired.session.tick(1 / 60);
 }
 
 interface WalkTrail {
@@ -574,6 +620,385 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     return expect(
       openings === 1 && world.grid.gate('gate_south')?.open === true,
       `openings=${openings} southOpen=${world.grid.gate('gate_south')?.open}`,
+    );
+  });
+
+  // -- combat handshake (R2) ------------------------------------------------
+  //
+  // Driven through `StubCombat`, which implements the same `CombatPort` the
+  // real `CombatSystem` does. These assert the wiring, not the combat maths.
+
+  checker.check('a tower takes its cell without re-routing anybody', () => {
+    const { session, combat } = wiredSession();
+    void session.world.groundField;
+    let rebuilds = 0;
+    session.events.on('flow_field_rebuilt', () => {
+      rebuilds += 1;
+    });
+    const gold = session.economy.gold;
+    const placed = session.commands.buildAt('mg_rivet', 5, 0);
+    void session.world.groundField;
+    return expect(
+      placed.ok &&
+        session.world.grid.isOccupied(5, 0) &&
+        !session.world.grid.isBuildable(5, 0) &&
+        session.economy.gold === gold - 50 &&
+        combat.towerList().length === 1 &&
+        rebuilds === 0,
+      `ok=${placed.ok} occupied=${session.world.grid.isOccupied(5, 0)} gold=${session.economy.gold} rebuilds=${rebuilds}`,
+    );
+  });
+
+  checker.check('the same cell cannot take a second tower', () => {
+    const { session } = wiredSession();
+    session.commands.buildAt('mg_rivet', 5, 0);
+    const again = session.commands.buildAt('mg_rivet', 5, 0);
+    return expect(!again.ok && again.check?.reason === 'occupied', `reason=${again.check?.reason}`);
+  });
+
+  checker.check('selling frees the cell and releases the supply draw', () => {
+    const { session, combat } = wiredSession({ gold: 1000, unlockAll: true });
+    session.commands.buildAt('tesla_coil', 5, 0);
+    const drawn = session.economy.powerUsed;
+    const refund = session.commands.sellAt(5, 0);
+    return expect(
+      drawn === 4 &&
+        refund.ok &&
+        session.economy.powerUsed === 0 &&
+        session.world.grid.isBuildable(5, 0) &&
+        combat.towerList().length === 0,
+      `drawn=${drawn} used=${session.economy.powerUsed} buildable=${session.world.grid.isBuildable(5, 0)}`,
+    );
+  });
+
+  checker.check('the supply cap refuses the tower that would break it (GDD §6.2)', () => {
+    const { session } = wiredSession({ gold: 1000, unlockAll: true });
+    const first = session.commands.buildAt('tesla_coil', 5, 0);
+    const second = session.commands.buildAt('tesla_coil', 6, 0);
+    const third = session.commands.buildAt('tesla_coil', 7, 0);
+    return expect(
+      first.ok && second.ok && !third.ok && third.check?.reason === 'insufficient_power',
+      `1=${first.ok} 2=${second.ok} 3=${third.check?.reason} used=${session.economy.powerUsed}/${session.economy.powerCap}`,
+    );
+  });
+
+  checker.check('generators raise the cap and capacitors the battery (GDD §6.2, D9)', () => {
+    const { session } = wiredSession({ gold: 1000, unlockAll: true });
+    const baseCap = session.economy.powerCap;
+    const baseBattery = session.economy.batteryMax;
+    session.build.place('generator', 5, 0);
+    session.build.place('capacitor_station', 6, 0);
+    return expect(
+      session.economy.powerCap === baseCap + 6 &&
+        session.economy.batteryMax === baseBattery + 30 &&
+        Math.abs(session.economy.batteryChargeMultiplier - 1.5) < 1e-9,
+      `cap=${session.economy.powerCap} battery=${session.economy.batteryMax} mul=${session.economy.batteryChargeMultiplier}`,
+    );
+  });
+
+  checker.check('the 挖沟 button arms, highlights, digs on click and disarms', () => {
+    const { session } = wiredSession();
+    const armed = session.commands.armDig();
+    const targets = session.highlightTargets();
+    const gold = session.economy.gold;
+    const clicked = session.commands.clickCell(8, 2);
+    return expect(
+      armed.ok &&
+        session.armedTool === null &&
+        targets.some((cell) => cell.cx === 8 && cell.cy === 2) &&
+        clicked.ok &&
+        session.economy.gold === gold - 50 &&
+        session.world.engineering.digLeft === 2,
+      `targets=${targets.length} clicked=${clicked.status} gold=${session.economy.gold}`,
+    );
+  });
+
+  checker.check('an illegal click leaves the tool armed and the wallet alone', () => {
+    const { session } = wiredSession();
+    session.commands.armDig();
+    const gold = session.economy.gold;
+    const clicked = session.commands.clickCell(1, 1);
+    return expect(
+      !clicked.ok &&
+        session.armedTool === 'dig' &&
+        session.economy.gold === gold &&
+        session.world.engineering.digLeft === 3,
+      `status=${clicked.status} armed=${session.armedTool} gold=${session.economy.gold}`,
+    );
+  });
+
+  checker.check('the engineering buttons grey out with the reason attached', () => {
+    const { session } = wiredSession({ gold: 10 });
+    const buttons = session.commands.buttons();
+    return expect(
+      !buttons.dig.enabled && buttons.dig.message === '金币不足' && buttons.dig.badge === 3,
+      `enabled=${buttons.dig.enabled} message=${buttons.dig.message} badge=${buttons.dig.badge}`,
+    );
+  });
+
+  checker.check('ground units spawn on the gate cell and steer on the shared field', () => {
+    const { session, combat } = wiredSession();
+    let spawnedAt = { x: -1, y: -1 };
+    combat.bus.on('enemy_spawned', (payload) => {
+      spawnedAt = payload.position;
+    });
+    session.startWave();
+    session.tick(1 / 60);
+    const enemy = combat.enemyList()[0];
+    // Empty path on purpose: walkers follow the field, so a mid-wave dig
+    // re-routes them (GDD §5.1). Only flyers carry waypoints.
+    return expect(
+      enemy !== undefined &&
+        spawnedAt.x === 0.5 &&
+        spawnedAt.y === 1.5 &&
+        enemy.path.length === 0 &&
+        enemy.pathProgress > 0,
+      `spawn=${spawnedAt.x},${spawnedAt.y} path=${enemy?.path.length} progress=${enemy?.pathProgress}`,
+    );
+  });
+
+  checker.check('flyers get a straight line to the core, not the flow field', () => {
+    const { session, combat } = wiredSession();
+    const request = {
+      enemy: ENEMY_IDS.scoutBee,
+      gateId: 'gate_north',
+      wave: 4,
+      ordinal: 0,
+      hpMultiplier: 1,
+      speedMultiplier: 1,
+      bountyMultiplier: 1,
+      cx: 0,
+      cy: 1,
+    };
+    session.link.spawn(request);
+    const bee = combat.enemyList()[0];
+    const core = session.world.grid.coreCells[0] as CellCoord;
+    for (let t = 0; t < 60 * 60 && bee && !bee.reachedGoal; t += 1) session.tick(1 / 60);
+    return expect(
+      bee !== undefined &&
+        bee.path.length === 1 &&
+        Math.abs((bee.path[0]?.x ?? 0) - (core.cx + 0.5)) < 1e-9 &&
+        bee.reachedGoal,
+      `path=${JSON.stringify(bee?.path)} reached=${bee?.reachedGoal}`,
+    );
+  });
+
+  checker.check('the map speed column reaches the movement driver (GDD §8.3)', () => {
+    const { session, combat } = wiredSession();
+    const base = { enemy: ENEMY_IDS.scavenger, gateId: 'gate_north', wave: 1, ordinal: 0, hpMultiplier: 1, bountyMultiplier: 1, cx: 0, cy: 1 };
+    session.link.spawn({ ...base, speedMultiplier: 1 });
+    session.link.spawn({ ...base, speedMultiplier: 2 });
+    for (let t = 0; t < 30; t += 1) session.tick(1 / 60);
+    const [slow, fast] = combat.enemyList();
+    const ratio = slow && fast ? fast.pathProgress / Math.max(slow.pathProgress, 1e-9) : 0;
+    return expect(Math.abs(ratio - 2) < 0.05, `progress ${slow?.pathProgress} vs ${fast?.pathProgress}`);
+  });
+
+  checker.check('a kill pays the decayed bounty (GDD §6.1)', () => {
+    const { session, combat } = wiredSession();
+    session.startWave();
+    session.tick(1 / 60);
+    const gold = session.economy.gold;
+    const enemy = combat.enemyList()[0];
+    if (!enemy) return 'nothing spawned';
+    combat.kill(enemy.id);
+    return expect(
+      session.economy.gold === gold + 5 && session.link.liveEnemies === 0,
+      `gold ${gold} -> ${session.economy.gold} live=${session.link.liveEnemies}`,
+    );
+  });
+
+  checker.check('a leak costs integrity and steals gold (GDD §10)', () => {
+    const { session } = wiredSession();
+    const gold = session.economy.gold;
+    session.link.spawn({
+      enemy: ENEMY_IDS.scavenger,
+      gateId: 'gate_north',
+      wave: 1,
+      ordinal: 0,
+      hpMultiplier: 1,
+      speedMultiplier: 4,
+      bountyMultiplier: 1,
+      cx: 0,
+      cy: 1,
+    });
+    for (let t = 0; t < 60 * 120 && session.link.liveEnemies > 0; t += 1) session.tick(1 / 60);
+    return expect(
+      session.economy.integrity === 98 && session.economy.gold === gold - 10,
+      `integrity=${session.economy.integrity} gold ${gold} -> ${session.economy.gold}`,
+    );
+  });
+
+  checker.check('integrity ≤80 loses zone A: cap −4, towers dark, draw kept (D11)', () => {
+    const { session, combat } = wiredSession({ gold: 1000, unlockAll: true });
+    session.commands.buildAt('tesla_coil', 5, 2); // inside zone A
+    const tower = session.build.towerAt(5, 2);
+    const cap = session.economy.powerCap;
+    session.economy.damageIntegrity(20, 'test');
+    session.applyIntegrity(session.economy.integrity);
+    return expect(
+      tower !== undefined &&
+        session.economy.powerCap === cap - 4 &&
+        session.build.towerAt(5, 2)?.powered === false &&
+        combat.isTowerPowered(tower.towerId) === false &&
+        session.economy.powerUsed === 4 &&
+        !session.build.check('mg_rivet', 6, 2).ok,
+      `cap ${cap} -> ${session.economy.powerCap} powered=${session.build.towerAt(5, 2)?.powered} used=${session.economy.powerUsed}`,
+    );
+  });
+
+  checker.check('integrity ≤50 opens the B sluice and re-routes the field', () => {
+    const { session } = wiredSession();
+    const before = costAt(session.world.groundField, 0, 1);
+    session.economy.damageIntegrity(50, 'test');
+    session.applyIntegrity(session.economy.integrity);
+    const after = costAt(session.world.groundField, 0, 1);
+    // 8 − 4 − 6 would be negative; the cap floors at zero and every powered
+    // tower is now dead weight (GDD §6.3-3).
+    return expect(
+      before === 32 && after === 21 && session.economy.powerCap === 0,
+      `route ${before} -> ${after} cap=${session.economy.powerCap}`,
+    );
+  });
+
+  checker.check('the Leviathan reaching the core ends the run outright', () => {
+    const { session, combat } = wiredSession();
+    session.link.spawn({
+      enemy: ENEMY_IDS.leviathan,
+      gateId: 'gate_north',
+      wave: 20,
+      ordinal: 0,
+      hpMultiplier: 1,
+      speedMultiplier: 4,
+      bountyMultiplier: 1,
+      cx: 0,
+      cy: 1,
+    });
+    let lost = '';
+    session.events.on('run_lost', (payload) => {
+      lost = payload.reason;
+    });
+    for (let t = 0; t < 60 * 300 && session.status !== 'lost'; t += 1) session.tick(1 / 60);
+    return expect(
+      lost === 'leviathan' && session.status === 'lost' && combat.enemyList().length === 0,
+      `reason=${lost} status=${session.status}`,
+    );
+  });
+
+  checker.check('a sapper on a player bridge reverts the terrain through gameplay', () => {
+    const { session, combat } = wiredSession();
+    session.commands.bridge(11, 5);
+    for (let t = 0; t < 60 * 4; t += 1) session.tick(1 / 60);
+    const bridged = costAt(session.world.groundField, 0, 1);
+    session.link.spawn({
+      enemy: ENEMY_IDS.sapperCrab,
+      gateId: 'gate_north',
+      wave: 7,
+      ordinal: 0,
+      hpMultiplier: 1,
+      speedMultiplier: 1,
+      bountyMultiplier: 1,
+      cx: 0,
+      cy: 1,
+    });
+    for (let t = 0; t < 60 * 120 && session.world.grid.isPlayerBridge(11, 5); t += 1) {
+      session.tick(1 / 60);
+    }
+    void combat;
+    return expect(
+      bridged === 22 &&
+        !session.world.grid.isPlayerBridge(11, 5) &&
+        session.world.grid.terrainAt(11, 5) === 'trench' &&
+        costAt(session.world.groundField, 0, 1) === 32,
+      `bridged=${bridged} terrain=${session.world.grid.terrainAt(11, 5)} after=${costAt(session.world.groundField, 0, 1)}`,
+    );
+  });
+
+  checker.check('a wave clears only once the field is empty, then pays out', () => {
+    const { session, combat } = wiredSession();
+    session.startWave();
+    for (let t = 0; t < 60 * 300 && !session.world.waves.spawningComplete; t += 1) {
+      session.tick(1 / 60);
+    }
+    const phaseWhileAlive: string = session.world.waves.state;
+    const stillRunning = phaseWhileAlive === 'clearing' && session.link.liveEnemies > 0;
+    const gold = session.economy.gold;
+    combat.killAll();
+    session.tick(1 / 60);
+    const phaseAfterWipe: string = session.world.waves.state;
+    return expect(
+      stillRunning &&
+        phaseAfterWipe === 'preparing' &&
+        session.economy.gold >= gold + 5 &&
+        session.status === 'preparing',
+      `running=${stillRunning} state=${phaseAfterWipe} gold ${gold} -> ${session.economy.gold}`,
+    );
+  });
+
+  checker.check('five cleared waves charge 主控过载 once (GDD §9)', () => {
+    const wired = wiredSession({ integrity: 100000 });
+    for (let wave = 0; wave < 5; wave += 1) playWave(wired);
+    const charges = wired.session.economy.ultimateCharges;
+    const fired = wired.session.commands.ultimate();
+    return expect(
+      charges === 1 && fired.ok && wired.combat.ultimatesFired === 1 && wired.session.economy.ultimateCharges === 0,
+      `charges=${charges} fired=${fired.status} combat=${wired.combat.ultimatesFired}`,
+    );
+  });
+
+  checker.check('wave 10 opens the second breach and spawns from both gates', () => {
+    const wired = wiredSession({ integrity: 100000 });
+    const gates = new Map<number, Set<string>>();
+    const cells = new Set<string>();
+    wired.session.events.on('wave_spawn', (request) => {
+      const set = gates.get(request.wave) ?? new Set<string>();
+      set.add(request.gateId);
+      gates.set(request.wave, set);
+      if (request.gateId === 'gate_south') cells.add(`${request.cx},${request.cy}`);
+    });
+    for (let wave = 0; wave < 10; wave += 1) playWave(wired);
+    const nine = gates.get(9) ?? new Set<string>();
+    const ten = gates.get(10) ?? new Set<string>();
+    return expect(
+      nine.size === 1 &&
+        ten.size === 2 &&
+        ten.has('gate_south') &&
+        cells.size === 1 &&
+        cells.has('0,10') &&
+        wired.session.world.grid.gate('gate_south')?.open === true,
+      `w9=${[...nine].join('|')} w10=${[...ten].join('|')} southCells=${[...cells].join('|')}`,
+    );
+  });
+
+  checker.check('both breaches can still reach the core once wave 10 opens', () => {
+    const wired = wiredSession({ integrity: 100000 });
+    for (let wave = 0; wave < 10; wave += 1) playWave(wired);
+    const field = wired.session.world.groundField;
+    const north = wired.session.world.gateCell('gate_north') as CellCoord;
+    const south = wired.session.world.gateCell('gate_south') as CellCoord;
+    return expect(
+      isReachable(field, north.cx, north.cy) && isReachable(field, south.cx, south.cy),
+      `north=${costAt(field, north.cx, north.cy)} south=${costAt(field, south.cx, south.cy)}`,
+    );
+  });
+
+  checker.check('the HUD snapshot reports the wired state (GDD §14.1)', () => {
+    const { session } = wiredSession();
+    session.commands.armDig();
+    const snapshot = session.snapshot();
+    const mg = snapshot.build.find((item) => item.defId === 'mg_rivet');
+    const tesla = snapshot.build.find((item) => item.defId === 'tesla_coil');
+    return expect(
+      snapshot.gold === 220 &&
+        snapshot.power.cap === 8 &&
+        snapshot.integrity.value === 100 &&
+        snapshot.integrity.thresholds.length === 2 &&
+        snapshot.engineering.armed === 'dig' &&
+        snapshot.engineering.digLeft === 3 &&
+        mg?.unlocked === true &&
+        tesla?.unlocked === false &&
+        snapshot.wave.total === 20,
+      `gold=${snapshot.gold} armed=${snapshot.engineering.armed} mg=${mg?.unlocked} tesla=${tesla?.unlocked}`,
     );
   });
 

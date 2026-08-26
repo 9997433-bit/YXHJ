@@ -95,6 +95,11 @@ export interface GameSessionOptions {
   economy?: Partial<EconomyRules>;
   /** Tower catalogue before combat attaches; combat's own replaces it. */
   content?: CombatContentView;
+  /**
+   * Blueprint unlock schedule (GDD §11). Defaults to the table's
+   * `ui.unlockWave`; a sandbox or a test passes `() => true`.
+   */
+  isBlueprintUnlocked?: (defId: string, wave: number) => boolean;
   events?: GameplayEvents;
   blockedPenalty?: number;
   /** False when the engine drives `combat.update` itself. */
@@ -139,6 +144,7 @@ export class GameSession {
       economy: this.economy,
       events: this.events,
       ...(options.content ? { content: options.content } : {}),
+      ...(options.isBlueprintUnlocked ? { isUnlocked: options.isBlueprintUnlocked } : {}),
       currentWave: () => this.world.waves.nextWave?.wave ?? this.world.waves.waveNumber,
     });
 
