@@ -213,3 +213,17 @@
 - **移交 R3-F3**：JSON 与代码在非价格字段仍有分叉，我按指派只动了价格——机枪 5 伤/0.5s vs 10 伤/1.0s（DPS 同为 10）、冷凝射程 2.5 vs 3.0 与锥角 60° vs 56°、焦油补涂 3s vs 2s、「双喷口」JSON 写同时 2 目标而代码做成加宽锥角+射程。需要配表侧拍一版。
 - **提醒**：升级目前不扣钱——`GameSession.upgradeTower` 直接转发给战斗，钱包没有走 `UpgradeDef.cost`。价格已对齐，接线还缺，归经济/接线侧。
 - 环境观察（非本次改动）：共享工作区里 `src/app`、`src/gameplay`、`src/ui` 有其他代理未提交改动；干净 HEAD 上 `npm test` 已有 2 条红（gameplay leak payload 与聚合计数），`npx tsc --noEmit` 有一条 `src/app/game.ts(84)` 报错。我的改动未新增红项，combat 侧类型干净。
+
+#### R3-O2 回报（M1 不丢区 + 挖沟教学，已交付）
+
+- 独占路径 `src/gameplay/**`，两个提交已推 `agent/last-watt`：`7456d2e` 门控与波 5 炸墙、`ccf543d` 改读配表 + 自检。
+- **M1 不丢区**。丢区（GDD §10）整套逻辑原样留着，外面加一道里程碑开关 `src/gameplay/rules/scope.ts`（`CURRENT_MILESTONE = 'M1'`）。跨 80 / 50 不再削供电上限、不断塔、不开闸；完整度照扣、阈值照显示、**扣到 0 照样判负**。实测默认配置下扣到 79 / 49 供电上限仍是 8，扣到 0 时 `run_lost{reason:'integrity'}` 照常发。
+- **门控读配表，不是写死**。R3-F3 落的 `milestone_gates.m1_zone_loss` 与 `zones[].active_from_milestone` / 事件的 `active_from_milestone` 原先在 importer 被丢掉，现在进 `MapDef.zoneLossByMilestone` / `ZoneDef.activeFromMilestone` / `BarrierDef.activeFromMilestone`。解析顺序：调用方 `zoneLoss` > 配表 > 里程碑默认值。把 JSON 里那个 `false` 改成 `true`，运行时立刻恢复丢区（INTEGRATION.md §4.1-5），自检里有一条专门钉这个。想跑 M2 语义：`createGameSession({ map, milestone: 'M2' })`。
+- **挖沟教学之前是坏的**，两处：
+  1. `GameplayWorld.startWave()` 从来没调过 `grid.openBarriersForWave()`，所以 `wave5_breach` 永远不炸——`gate_1b` 的出怪格 (0,5) 一直是墙，支路一直封。已在同步出怪口**之前**接上（顺序有意义）。
+  2. 波 5 那条赠送挖沟的 `free: true` 与 `recommended_cell: [5,5]` 在 importer 被丢掉，玩家照样被扣 50 金 + 1 次配额。现在免费次数优先于付费配额消耗，不扣金不占额。
+  实测：波 5 之前全图合法挖点只有 5 格软土（都不在任何路径上，教不了任何东西，(8,2)/(9,2) 挖了就封 `gate_1`）；波 5 开波后变 10 格，`(8,2) (9,2) (4,5) (5,5) (6,5)` 全部合法。花掉赠送的那一镐：金币 270 → 270，挖沟次数 4 → 3（三次付费配额一次没动），下一次报价回到 50。挖 (5,5) 后支路捷径被切断，敌人回主路。
+- **给 UI 的新字段**（`session.snapshot()`，都是增量，不改现有字段语义）：`integrity.lossEnabled`、每条阈值多 `breached`（跌破了）与原有 `lost`（区真没了，M1 恒 false）；`engineering.freeDig / freeBridge / recommended`，`digCost` 改成「下一次的实际报价」（赠送未花时是 0）。
+- **移交 R3-O1 / O4（UI 侧，不是我的树）**：`ResourceRail` 现在按 `lost` 画「已丢」，M1 永远不会亮，但 80/50 两条刻度还立在那儿暗示「掉到这里要丢区」。建议 `lossEnabled === false` 时把刻度改成中性星级分档口径，或读 `breached` 变色而不写「已丢」。`ActionCluster` 的「挖沟：N 金」直接吃 `digCost`，赠送时会显示 0 金，可加个「赠送」角标。
+- 自检 73 → **82 条全绿**。丢区那几条保留覆盖，名字前加 `丢区 on:` 并显式开开关（授权图那条要 `milestone: 'M2'`，因为它的 zone 标了 M2）；新增 `M1:` 4 条与 `挖沟教学:` 3 条，后者按真实节奏跑到波 5。`npx tsc --noEmit` 干净，`npm run build` 通过。
+- **未修的既有红项**（在 `tests/**`，R3-G1 的树）：`tests/last-watt-rules.test.ts:22` 把自检条数写死成 47，干净 HEAD 上就已经红（当时 73 条），我这轮变成 82 条，仍红；`every production enemy emits its configured leak payload` 的 `swift_rat` 也是干净 HEAD 上就红的，与本次改动无关。逐条自检测试（`gameplay self-check: <name>`）全绿。
