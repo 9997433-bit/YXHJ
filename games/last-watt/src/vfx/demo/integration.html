@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>余电 · 引擎接线试验台</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #070605;
+        color: #dfe9ef;
+        font-family: system-ui, sans-serif;
+      }
+      #lw-stage {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      引擎接线试验台：真 Engine + 真 PostPipeline + VfxSystem + HUD，
+      战斗事件由一段脚本时间线假扮（本页不启动 CombatSystem）。
+
+      它验证的是三件截图看不出来但一眼能看出坏的事：
+      1. Bloom 遮罩 pass 里粒子不再退回出生点，也不再出现黑方块；
+      2. 冰碎的 60ms 顿帧真的冻住了逻辑时钟——敌人停住、画面不掉帧；
+      3. 战斗事件（稳定信号）经 combatBridge 落到 vfx.play。
+    -->
+    <div id="lw-stage"></div>
+    <script type="module" src="./integration.ts"></script>
+  </body>
+</html>
