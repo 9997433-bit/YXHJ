@@ -24,6 +24,7 @@ attribute vec2 aTile;    // x: 图集 tile 基号, y: 翻页帧数(1=静态)
 attribute vec4 aColorA;  // 起始颜色（线性 RGB + alpha）
 attribute vec4 aColorB;  // 结束颜色
 attribute float aDrag;   // 阻尼系数 k
+attribute vec2 aCurve;   // x: 颜色插值指数, y: 尺寸插值指数（1 = 线性）
 
 uniform float uTime;
 uniform float uPixelScale;   // drawingBufferHeight / (2·tan(fov/2))
@@ -60,7 +61,12 @@ void main() {
   vec4 mv = modelViewMatrix * vec4(position + disp, 1.0);
   gl_Position = projectionMatrix * mv;
 
-  float worldSize = mix(aSize.x, aSize.y, t);
+  // 指数曲线：指数 >1 表示「先稳住、末尾快速收」。
+  // 冰晶碎片要靠它读成实心的冰，线性淡出会让它一出生就变成一团灰雾。
+  float ct = pow(t, aCurve.x);
+  float st = pow(t, aCurve.y);
+
+  float worldSize = mix(aSize.x, aSize.y, st);
   float raw = worldSize * uPixelScale / max(-mv.z, 1e-3);
   float sizePx = clamp(raw, uSizeClampPx.x, uSizeClampPx.y);
 
@@ -70,7 +76,7 @@ void main() {
     : 1.0;
 
   gl_PointSize = sizePx;
-  vColor = mix(aColorA, aColorB, t);
+  vColor = mix(aColorA, aColorB, ct);
   vColor.a *= subPixelFade;
   vRot = aRot.x + aRot.y * age;
 

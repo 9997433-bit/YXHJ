@@ -25,8 +25,20 @@ export interface VfxContext {
 const UP: Vec3Like = { x: 0, y: 1, z: 0 };
 const GRAVITY = { x: 0, y: -14, z: 0 };
 
-/** 冰系配色：亮芯冰白 → 透明淡青，保证在锈铁棕地面上一眼可读。 */
+/**
+ * 冰系配色：亮芯冰白 → 冷青尾。
+ *
+ * 尾色刻意偏电青而不是直接透明，理由是锈铁地面是暖棕色——
+ * 纯白碎片褪色时会经过一段「灰」，在暖底上读成尘土。加一点青能保证
+ * 整个生命周期里它都还是「冰」。
+ */
 const ICE_HOT: RGBA = boost(PALETTE.ice, 2.6);
+const ICE_TAIL: RGBA = [
+  PALETTE.electric[0] * 0.9,
+  PALETTE.electric[1] * 1.1,
+  PALETTE.electric[2] * 1.3,
+  0,
+];
 const ICE_COOL: RGBA = withAlpha(PALETTE.ice, 0);
 
 function emit(
@@ -64,11 +76,16 @@ export function playIceShatter(
       drag: 0.9,
       life: 0.5,
       lifeJitter: 0.14,
-      sizeStart: 0.26 * radius,
-      sizeEnd: 0.2 * radius,
+      sizeStart: 0.34 * radius,
+      sizeEnd: 0.26 * radius,
       sizeJitter: 0.45,
-      colorStart: boost(PALETTE.ice, 1.6),
-      colorEnd: ICE_COOL,
+      // 1.25 而不是更高：再亮就三通道全部溢出成纯白，冰白的蓝调会丢掉，
+      // 碎片在暖棕地面上反而变成一堆白纸片
+      colorStart: boost(PALETTE.ice, 1.25),
+      colorEnd: ICE_TAIL,
+      // 指数 3：整段寿命里都是实心冰片，只在最后 ~15% 收掉。
+      // 线性淡出会让碎片刚出生就半透明，在暖棕地面上退化成一团灰屑。
+      colorCurve: 3,
       tile: shardTiles[i],
       randomRotation: true,
       spin: 11,
@@ -85,6 +102,8 @@ export function playIceShatter(
     sizeEnd: 2.9 * radius,
     colorStart: ICE_HOT,
     colorEnd: withAlpha(PALETTE.ice, 0),
+    // 亮芯要「炸出来再瞬间消失」，尺寸走 0.5 次方先猛胀
+    sizeCurve: 0.5,
     tile: ParticleTile.Flare,
     blend: 'additive',
   });
@@ -98,6 +117,7 @@ export function playIceShatter(
     sizeEnd: 2.4 * radius,
     colorStart: boost(PALETTE.ice, 1.9),
     colorEnd: withAlpha(PALETTE.ice, 0),
+    sizeCurve: 0.55,
     tile: ParticleTile.Ring,
     blend: 'additive',
   });
@@ -114,11 +134,12 @@ export function playIceShatter(
     drag: 2.6,
     life: 0.9,
     lifeJitter: 0.25,
-    sizeStart: 0.16,
-    sizeEnd: 0.02,
+    sizeStart: 0.11,
+    sizeEnd: 0.015,
     sizeJitter: 0.4,
     colorStart: boost(PALETTE.ice, 2.2),
     colorEnd: ICE_COOL,
+    colorCurve: 1.8,
     tile: ParticleTile.Frost,
     randomRotation: true,
     spin: 4,
@@ -326,11 +347,12 @@ export function playOverloadStart(ctx: VfxContext, position: Vec3Like, radiusCel
     drag: 2.8,
     life: 0.6,
     lifeJitter: 0.25,
-    sizeStart: 0.22,
-    sizeEnd: 0.04,
+    sizeStart: 0.34,
+    sizeEnd: 0.05,
     sizeJitter: 0.5,
-    colorStart: boost(PALETTE.electric, 2.2),
+    colorStart: boost(PALETTE.electric, 2.6),
     colorEnd: withAlpha(PALETTE.electric, 0),
+    colorCurve: 2.2,
     tile: ParticleTile.Spike,
     randomRotation: true,
     spin: 9,

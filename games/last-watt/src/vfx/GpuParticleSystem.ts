@@ -42,6 +42,13 @@ export interface EmitParams {
   sizeJitter?: number;
   colorStart: RGBA;
   colorEnd: RGBA;
+  /**
+   * 颜色/透明度插值曲线指数，默认 1（线性）。
+   * >1 = 先稳住末尾快收（冰晶要实心）；<1 = 一出生就淡（雾气要柔）。
+   */
+  colorCurve?: number;
+  /** 尺寸插值曲线指数，默认 1。>1 让「先胀后停」，<1 让「猛胀再缓」。 */
+  sizeCurve?: number;
   tile: ParticleTile;
   /** 翻页帧数，火焰用 4 */
   frameCount?: number;
@@ -62,6 +69,7 @@ const FLOATS = {
   colorA: 4,
   colorB: 4,
   drag: 1,
+  curve: 2,
 } as const;
 
 /** 可复现随机源：自检与压测需要逐帧一致的结果。 */
@@ -150,6 +158,7 @@ class ParticleLayer {
     add('aColorA', FLOATS.colorA);
     add('aColorB', FLOATS.colorB);
     add('aDrag', FLOATS.drag);
+    add('aCurve', FLOATS.curve);
 
     // 位置在着色器里演进，包围盒无意义，直接关剔除
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
@@ -209,6 +218,9 @@ class ParticleLayer {
     const colA = this.attrs.aColorA.array as Float32Array;
     const colB = this.attrs.aColorB.array as Float32Array;
     const drag = this.attrs.aDrag.array as Float32Array;
+    const curve = this.attrs.aCurve.array as Float32Array;
+    const colorCurve = params.colorCurve ?? 1;
+    const sizeCurve = params.sizeCurve ?? 1;
 
     const jitter = params.positionJitter ?? 0;
     const speed = params.speed ?? 0;
@@ -316,6 +328,8 @@ class ParticleLayer {
       colB[i * 4 + 3] = params.colorEnd[3];
 
       drag[i] = params.drag ?? 0;
+      curve[i * 2] = colorCurve;
+      curve[i * 2 + 1] = sizeCurve;
     }
 
     this.head = (start + n) % this.capacity;
