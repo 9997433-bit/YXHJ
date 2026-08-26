@@ -88,8 +88,8 @@ export class GridView {
 
     const material = new MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.86,
-      metalness: 0.35,
+      roughness: SURFACE.rustRoughness,
+      metalness: SURFACE.rustMetalness,
       flatShading: true,
     });
 

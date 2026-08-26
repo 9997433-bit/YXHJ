@@ -14,14 +14,18 @@ const GROUND_PLANE = new Plane(new Vector3(0, 1, 0), 0);
 export class CameraRig {
   readonly camera: PerspectiveCamera;
 
-  private readonly target = new Vector3();
+  /** Where gameplay wants the camera centred; the framing solve adds an offset on top. */
+  private readonly anchor = new Vector3();
+  private readonly effectiveTarget = new Vector3();
   private readonly offsetDir = new Vector3();
   private readonly raycaster = new Raycaster();
   private readonly ndc = new Vector2();
+  private readonly corner = new Vector3();
 
   private zoomIndex = 0;
   private aspect = 1;
   private fitDistance = 1;
+  private frameOffsetZ = 0;
 
   constructor() {
     this.camera = new PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far);
@@ -33,15 +37,15 @@ export class CameraRig {
       .set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
       .normalize();
 
-    this.target.set((GRID.cols * GRID.cellSize) / 2, 0, (GRID.rows * GRID.cellSize) / 2);
+    this.anchor.set((GRID.cols * GRID.cellSize) / 2, 0, (GRID.rows * GRID.cellSize) / 2);
     this.setViewport(1, 1);
   }
 
-  /** Re-derives the fit distance for the new viewport and re-places the camera. */
+  /** Re-solves the framing for the new viewport and re-places the camera. */
   setViewport(width: number, height: number): void {
     this.aspect = Math.max(width, 1) / Math.max(height, 1);
     this.camera.aspect = this.aspect;
-    this.fitDistance = this.computeFitDistance();
+    this.solveFraming();
     this.apply();
   }
 
@@ -62,13 +66,13 @@ export class CameraRig {
     return this.zoomIndex;
   }
 
-  /** Ground-plane point the camera is centred on. */
+  /** Ground-plane point the camera is actually looking at, framing offset included. */
   getTarget(out = new Vector3()): Vector3 {
-    return out.copy(this.target);
+    return out.copy(this.effectiveTarget);
   }
 
   setTarget(x: number, z: number): void {
-    this.target.set(x, 0, z);
+    this.anchor.set(x, 0, z);
     this.apply();
   }
 
@@ -87,32 +91,89 @@ export class CameraRig {
   }
 
   private apply(): void {
-    const distance = this.fitDistance * CAMERA.zoomSteps[this.zoomIndex];
-    this.camera.position.copy(this.target).addScaledVector(this.offsetDir, distance);
-    this.camera.lookAt(this.target);
+    this.place(this.fitDistance * CAMERA.zoomSteps[this.zoomIndex], this.frameOffsetZ);
+  }
+
+  private place(distance: number, offsetZ: number): void {
+    this.effectiveTarget.copy(this.anchor);
+    this.effectiveTarget.z += offsetZ;
+    this.camera.position.copy(this.effectiveTarget).addScaledVector(this.offsetDir, distance);
+    this.camera.lookAt(this.effectiveTarget);
     this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld(true);
   }
 
   /**
-   * Distance at which the whole 20×12 grid fits the viewport.
+   * Solves for the distance and vertical framing offset that fit the whole
+   * 20×12 board.
    *
-   * The grid's depth is foreshortened by sin(pitch) when it lands on the
-   * screen's vertical axis; its width is unaffected because yaw is locked to a
-   * grid axis. Whichever axis needs more room wins.
+   * A closed-form fit is wrong here: under perspective the near edge of a
+   * pitched board projects much larger than the far edge, so aiming at the
+   * board's centre leaves dead space at the top and clips the bottom. Instead
+   * the four ground corners are projected and the rig is re-centred and
+   * re-scaled until they sit inside the viewport. Converges in a handful of
+   * passes and only runs on resize, so the cost is irrelevant.
    */
-  private computeFitDistance(): number {
+  private solveFraming(): void {
     const pitch = MathUtils.degToRad(CAMERA.pitchDeg);
     const halfFov = MathUtils.degToRad(CAMERA.fov) / 2;
 
     const worldWidth = GRID.cols * GRID.cellSize;
     const worldDepth = GRID.rows * GRID.cellSize;
 
-    const halfScreenHeight = (worldDepth * Math.sin(pitch)) / 2;
-    const halfScreenWidth = worldWidth / 2;
+    // Analytic starting guess: the board's depth is foreshortened by sin(pitch)
+    // on the screen's vertical axis, its width is not (yaw is grid-aligned).
+    const byHeight = (worldDepth * Math.sin(pitch)) / 2 / Math.tan(halfFov);
+    const byWidth = worldWidth / 2 / (Math.tan(halfFov) * this.aspect);
 
-    const byHeight = halfScreenHeight / Math.tan(halfFov);
-    const byWidth = halfScreenWidth / (Math.tan(halfFov) * this.aspect);
+    let distance = Math.max(byHeight, byWidth);
+    let offsetZ = 0;
 
-    return Math.max(byHeight, byWidth) * CAMERA.fitMargin;
+    for (let pass = 0; pass < 8; pass += 1) {
+      this.place(distance, offsetZ);
+      const centred = this.projectBoard();
+
+      // World depth spanned by one NDC unit at the target plane. Pushing the
+      // target away from the camera slides the board down the screen.
+      const worldPerNdcY = (distance * Math.tan(halfFov)) / Math.sin(pitch);
+      offsetZ -= ((centred.minY + centred.maxY) / 2) * worldPerNdcY;
+
+      this.place(distance, offsetZ);
+      const framed = this.projectBoard();
+
+      const halfX = (framed.maxX - framed.minX) / 2;
+      const halfY = (framed.maxY - framed.minY) / 2;
+      distance *= Math.max(halfX, halfY) * CAMERA.fitMargin;
+    }
+
+    this.fitDistance = distance;
+    this.frameOffsetZ = offsetZ;
+  }
+
+  /** NDC bounding box of the board's four ground corners. */
+  private projectBoard(): { minX: number; maxX: number; minY: number; maxY: number } {
+    const worldWidth = GRID.cols * GRID.cellSize;
+    const worldDepth = GRID.rows * GRID.cellSize;
+    const corners: Array<[number, number]> = [
+      [0, 0],
+      [worldWidth, 0],
+      [0, worldDepth],
+      [worldWidth, worldDepth],
+    ];
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const [x, z] of corners) {
+      this.corner.set(x, 0, z).project(this.camera);
+      minX = Math.min(minX, this.corner.x);
+      maxX = Math.max(maxX, this.corner.x);
+      minY = Math.min(minY, this.corner.y);
+      maxY = Math.max(maxY, this.corner.y);
+    }
+
+    return { minX, maxX, minY, maxY };
   }
 }

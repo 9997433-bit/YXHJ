@@ -56,25 +56,33 @@ export const SURFACE = {
   /** Scene clear colour / far fog. */
   voidColor: 0x0d0908,
   /** Ground slab. */
-  rustBase: 0x4a3227,
+  rustBase: 0x7a5340,
   /** Alternating plate tint, keeps the 20×12 read legible without a texture. */
-  rustPlate: 0x3a2720,
+  rustPlate: 0x6d4835,
   /** Grid seam lines. */
-  seam: 0x6b5142,
+  seam: 0x9b7458,
   /** Grid border. */
-  border: 0x8a6a52,
+  border: 0xb98d68,
+  /**
+   * Rust is an oxide, not bare metal. Keeping metalness low is both physically
+   * right and the only way the slab reads at all without an environment map.
+   */
+  rustRoughness: 0.9,
+  rustMetalness: 0.12,
 } as const;
 
 /** Lighting — GDD §15.1: one fixed directional key light, no day/night. */
 export const LIGHTING = {
   keyColor: 0xffd9b8,
-  keyIntensity: 2.4,
+  keyIntensity: 2.6,
   /** Direction the key light travels, in grid-relative units. */
   keyDirection: { x: -0.55, y: -1.0, z: -0.45 },
   /** Minimal sky/ground fill so unlit rust does not read as pure black. */
-  fillSkyColor: 0x3b4a5a,
-  fillGroundColor: 0x241812,
-  fillIntensity: 0.55,
+  fillSkyColor: 0x546a7e,
+  fillGroundColor: 0x3a251b,
+  fillIntensity: 1.35,
+  /** Shadows stay readable but never crush to black. */
+  shadowIntensity: 0.72,
 } as const;
 
 /**
@@ -83,8 +91,8 @@ export const LIGHTING = {
  * threshold exists purely to reject faint emissive, not to reject lit albedo.
  */
 export const BLOOM = {
-  strength: 1.05,
-  radius: 0.55,
+  strength: 0.6,
+  radius: 0.62,
   threshold: 0.0,
   /** Additive weight when the bloom buffer is composited over the beauty pass. */
   mix: 1.0,

@@ -1,9 +1,4 @@
-import {
-  ACESFilmicToneMapping,
-  PCFSoftShadowMap,
-  SRGBColorSpace,
-  WebGLRenderer,
-} from 'three';
+import { ACESFilmicToneMapping, PCFShadowMap, SRGBColorSpace, WebGLRenderer } from 'three';
 
 import { DEVICE, SURFACE } from '../config';
 
@@ -58,7 +53,12 @@ export function createRenderer(container: HTMLElement): RendererBundle {
   renderer.toneMappingExposure = 1.0;
 
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.shadowMap.type = PCFShadowMap;
+
+  // The post stack renders the scene twice per frame (emissive mask + beauty),
+  // so the per-render auto reset would leave the counters showing whichever
+  // pass happened to run last. Engine resets them once per frame instead.
+  renderer.info.autoReset = false;
 
   container.appendChild(canvas);
 

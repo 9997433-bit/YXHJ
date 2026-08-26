@@ -88,15 +88,15 @@ export class EmissiveTestbed {
       pedestal.castShadow = true;
       pedestal.receiveShadow = true;
 
-      const probeMaterial = this.emissiveMaterial(hex, 2.6);
+      const probeMaterial = this.emissiveMaterial(hex, 1.9);
       const probe = new Mesh(probeGeometry, probeMaterial);
       probe.name = `probe-${name}`;
       probe.position.set(centre.x, 0.68, centre.z);
 
       this.pulses.push({
         material: probeMaterial,
-        base: 2.6,
-        amplitude: 0.9,
+        base: 1.9,
+        amplitude: 0.5,
         speed: 1.6,
         phase: index * 0.7,
       });
@@ -113,14 +113,14 @@ export class EmissiveTestbed {
     this.geometries.push(slabGeometry, blockGeometry, coneGeometry);
 
     const slabCentre = cellToWorld(4, 8);
-    const slab = new Mesh(slabGeometry, this.rustMaterial(0.9, 0.42));
+    const slab = new Mesh(slabGeometry, this.rustMaterial(0.9, 0.14));
     slab.name = 'rust-slab';
     slab.position.set(slabCentre.x + GRID.cellSize, 0.25, slabCentre.z + GRID.cellSize / 2);
     slab.castShadow = true;
     slab.receiveShadow = true;
 
     const blockCentre = cellToWorld(9, 9);
-    const block = new Mesh(blockGeometry, this.rustMaterial(0.75, 0.55));
+    const block = new Mesh(blockGeometry, this.rustMaterial(0.78, 0.2));
     block.name = 'rust-block';
     block.position.set(blockCentre.x, 0.7, blockCentre.z);
     block.rotation.y = Math.PI * 0.12;
@@ -128,7 +128,7 @@ export class EmissiveTestbed {
     block.receiveShadow = true;
 
     const coneCentre = cellToWorld(11, 8);
-    const cone = new Mesh(coneGeometry, this.rustMaterial(0.95, 0.2));
+    const cone = new Mesh(coneGeometry, this.rustMaterial(0.95, 0.08));
     cone.name = 'rust-cone';
     cone.position.set(coneCentre.x, 0.55, coneCentre.z);
     cone.castShadow = true;
@@ -147,24 +147,24 @@ export class EmissiveTestbed {
     const ringGeometry = new TorusGeometry(0.95, 0.045, 8, 32);
     this.geometries.push(baseGeometry, shaftGeometry, capGeometry, ringGeometry);
 
-    const base = new Mesh(baseGeometry, this.rustMaterial(0.8, 0.5));
+    const base = new Mesh(baseGeometry, this.rustMaterial(0.82, 0.22));
     base.name = 'core-base';
     base.position.set(centre.x, 0.22, centre.z);
     base.castShadow = true;
     base.receiveShadow = true;
 
-    const shaftMaterial = this.emissiveMaterial(PALETTE.electric, 1.1, 0x101c22);
+    const shaftMaterial = this.emissiveMaterial(PALETTE.electric, 0.65, 0x101c22);
     const shaft = new Mesh(shaftGeometry, shaftMaterial);
     shaft.name = 'core-shaft';
     shaft.position.set(centre.x, 1.4, centre.z);
     shaft.castShadow = true;
 
-    const capMaterial = this.emissiveMaterial(PALETTE.frost, 3.4);
+    const capMaterial = this.emissiveMaterial(PALETTE.frost, 1.35);
     const cap = new Mesh(capGeometry, capMaterial);
     cap.name = 'core-cap';
     cap.position.set(centre.x, 2.7, centre.z);
 
-    const ringMaterial = this.emissiveMaterial(PALETTE.electric, 4.2);
+    const ringMaterial = this.emissiveMaterial(PALETTE.electric, 2.0);
     const ring = new Mesh(ringGeometry, ringMaterial);
     ring.name = 'core-ring';
     ring.rotation.x = Math.PI / 2;
@@ -172,9 +172,9 @@ export class EmissiveTestbed {
     this.ring = ring;
 
     this.pulses.push(
-      { material: shaftMaterial, base: 1.1, amplitude: 0.45, speed: 2.1, phase: 0 },
-      { material: capMaterial, base: 3.4, amplitude: 1.2, speed: 2.8, phase: 1.2 },
-      { material: ringMaterial, base: 4.2, amplitude: 1.4, speed: 3.4, phase: 2.4 },
+      { material: shaftMaterial, base: 0.65, amplitude: 0.3, speed: 2.1, phase: 0 },
+      { material: capMaterial, base: 1.35, amplitude: 0.6, speed: 2.8, phase: 1.2 },
+      { material: ringMaterial, base: 2.0, amplitude: 0.8, speed: 3.4, phase: 2.4 },
     );
 
     this.root.add(base, shaft, cap, ring);
@@ -194,15 +194,15 @@ export class EmissiveTestbed {
 
     corners.forEach(([col, row], index) => {
       const centre = cellToWorld(col, row);
-      const material = this.emissiveMaterial(PALETTE.frost, 2.0);
+      const material = this.emissiveMaterial(PALETTE.frost, 1.4);
       const marker = new Mesh(geometry, material);
       marker.name = `corner-${col}-${row}`;
       marker.position.set(centre.x, 0.14, centre.z);
 
       this.pulses.push({
         material,
-        base: 2.0,
-        amplitude: 0.7,
+        base: 1.4,
+        amplitude: 0.45,
         speed: 2.2,
         phase: index * 1.1,
       });
@@ -211,7 +211,10 @@ export class EmissiveTestbed {
     });
   }
 
-  private rustMaterial(roughness = 0.85, metalness = 0.45): MeshStandardMaterial {
+  private rustMaterial(
+    roughness: number = SURFACE.rustRoughness,
+    metalness: number = SURFACE.rustMetalness,
+  ): MeshStandardMaterial {
     const material = new MeshStandardMaterial({
       color: new Color(SURFACE.rustBase),
       roughness,

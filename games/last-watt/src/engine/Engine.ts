@@ -139,6 +139,7 @@ export class Engine {
   private readonly renderFrame = (event: RenderEvent): void => {
     if (this.disposed) return;
 
+    this.renderer.info.reset();
     this.testbed?.update(event.elapsed);
     this.post.render();
 

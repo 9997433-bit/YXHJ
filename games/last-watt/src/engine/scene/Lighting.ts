@@ -36,6 +36,7 @@ export class Lighting {
     this.key.target = this.anchor;
 
     this.key.castShadow = true;
+    this.key.shadow.intensity = LIGHTING.shadowIntensity;
     this.key.shadow.mapSize.set(2048, 2048);
     this.key.shadow.bias = -0.0006;
     this.key.shadow.normalBias = 0.02;
