@@ -42,6 +42,25 @@ export interface StatusApplyResult {
   removed: StatusRemoval[];
 }
 
+/** Keeps whichever value hurts the host more (SYSTEMS.md decision D12). */
+function strongestModifiers(
+  incumbent: StatusModifiers | undefined,
+  incoming: StatusModifiers,
+): StatusModifiers {
+  if (!incumbent) return incoming;
+  const merged: StatusModifiers = { ...incumbent, ...incoming };
+  if (incumbent.speedMul !== undefined && incoming.speedMul !== undefined) {
+    merged.speedMul = Math.min(incumbent.speedMul, incoming.speedMul);
+  }
+  if (incumbent.damageTakenMul !== undefined && incoming.damageTakenMul !== undefined) {
+    merged.damageTakenMul = Math.max(incumbent.damageTakenMul, incoming.damageTakenMul);
+  }
+  if (incumbent.armorDelta !== undefined && incoming.armorDelta !== undefined) {
+    merged.armorDelta = Math.min(incumbent.armorDelta, incoming.armorDelta);
+  }
+  return merged;
+}
+
 function applyModifiers(acc: AggregatedModifiers, mods: StatusModifiers, times: number): void {
   if (times <= 0) return;
   if (mods.speedMul !== undefined) acc.speedMul *= Math.pow(mods.speedMul, times);
@@ -127,7 +146,12 @@ export class StatusSet {
       existing.stacks = Math.min(def.maxStacks, existing.stacks + addStacks);
       if (def.refresh === 'refresh') existing.remaining = Math.max(existing.remaining, duration);
       else if (def.refresh === 'extend') existing.remaining += duration;
-      if (options.modifiers) existing.modifiers = options.modifiers;
+      if (options.modifiers) {
+        existing.modifiers =
+          def.modifierMerge === 'strongest'
+            ? strongestModifiers(existing.modifiers, options.modifiers)
+            : options.modifiers;
+      }
       if (options.params) existing.params = options.params;
       this.dirty = true;
       return {
@@ -165,7 +189,16 @@ export class StatusSet {
     for (const instance of [...this.instances.values()]) {
       if (instance.remaining === Number.POSITIVE_INFINITY) continue;
       instance.remaining -= dt;
-      if (instance.remaining <= 0) this.removeInternal(instance.id, 'expired', expired);
+      if (instance.remaining > 0) continue;
+
+      const def = this.registry.get(instance.id);
+      if (def.decay === 'one_stack' && instance.stacks > 1) {
+        instance.stacks -= 1;
+        instance.remaining = def.defaultDuration;
+        this.dirty = true;
+        continue;
+      }
+      this.removeInternal(instance.id, 'expired', expired);
     }
     return expired;
   }

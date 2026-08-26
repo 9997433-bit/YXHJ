@@ -18,6 +18,11 @@ type Handler<K extends ConditionSpec['kind']> = (
 
 type ConditionHandlers = { [K in ConditionSpec['kind']]: Handler<K> };
 
+function damageOf(ctx: ReactionContext, of: 'current' | 'base' | undefined): number {
+  if (!ctx.hit) return 0;
+  return of === 'base' ? ctx.hit.baseAmount : ctx.hit.amount;
+}
+
 const handlers: ConditionHandlers = {
   always: () => true,
 
@@ -42,9 +47,9 @@ const handlers: ConditionHandlers = {
 
   damageTypeIs: (spec, ctx) => ctx.hit?.damageType === spec.damageType,
 
-  damageAtLeast: (spec, ctx) => (ctx.hit?.amount ?? 0) >= spec.amount,
+  damageAtLeast: (spec, ctx) => damageOf(ctx, spec.of) >= spec.amount,
 
-  damageAtMost: (spec, ctx) => (ctx.hit?.amount ?? 0) <= spec.amount,
+  damageAtMost: (spec, ctx) => damageOf(ctx, spec.of) <= spec.amount,
 
   targetIsFlying: (spec, ctx) => (ctx.target?.def.isFlying ?? false) === spec.value,
 

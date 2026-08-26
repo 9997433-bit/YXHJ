@@ -750,8 +750,9 @@ export class CombatSystem implements ReactionRuntime {
         source,
       });
 
-      if (result.chainBonus) {
-        // Conduct: extra jumps and, on a wet target, no falloff at all.
+      // Conduct is decided on the primary target only (SYSTEMS.md decision D8):
+      // a wet enemy mid-chain does not extend a chain that is already flying.
+      if (result.chainBonus && hitIds.size === 1) {
         jumps = Math.min(MAX_CHAIN_JUMPS, jumps + result.chainBonus.extraJumps);
         if (result.chainBonus.falloffOverride !== undefined) falloff = result.chainBonus.falloffOverride;
         empowered = true;
@@ -929,7 +930,7 @@ export class CombatSystem implements ReactionRuntime {
         source: splash.source,
         ignoreArmor: splash.ignoreArmor,
         position: splash.origin,
-        depth: splash.depth,
+        depth: splash.canTriggerReactions ? splash.depth : MAX_REACTION_DEPTH + 1,
         ...(splash.combo ? { combo: splash.combo } : {}),
       });
     }
@@ -1163,7 +1164,8 @@ export class CombatSystem implements ReactionRuntime {
     const tower = this.towers.get(towerId);
     const activation = tower?.def.activation;
     if (!tower || !activation) return false;
-    if (!tower.powered || tower.activationCooldown > 0) return false;
+    // A capacitor that is itself shut down cannot fire (SYSTEMS.md §7.5).
+    if (!tower.operational || tower.activationCooldown > 0) return false;
 
     const fired = this.trigger({
       trigger: 'on_activate',

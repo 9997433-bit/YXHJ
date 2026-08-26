@@ -14,6 +14,7 @@ import {
   BURN_DPS,
   BURN_DURATION,
   CHILL_IMMUNITY_DURATION,
+  CHILL_STACK_DECAY,
   CHILL_STACKS_TO_FREEZE,
   FREEZE_DURATION,
   OIL_COATING_DURATION,
@@ -59,8 +60,11 @@ export const STATUS_DEFS: readonly StatusDef[] = [
     displayName: '湿冷',
     kind: 'modifier',
     maxStacks: CHILL_STACKS_TO_FREEZE,
-    defaultDuration: 3,
+    defaultDuration: CHILL_STACK_DECAY,
     refresh: 'refresh',
+    // Layers peel off one at a time rather than all at once, so stepping out
+    // of the spray for a moment does not reset the whole build-up.
+    decay: 'one_stack',
     ui: { icon: 'status_chill', color: PALETTE.ice },
     note: 'GDD §7.3.1 — condenser adds one layer per tick; three layers freeze.',
   },
@@ -107,6 +111,8 @@ export const STATUS_DEFS: readonly StatusDef[] = [
     maxStacks: 1,
     defaultDuration: 1,
     refresh: 'refresh',
+    // Two slows do not multiply; the stronger one wins.
+    modifierMerge: 'strongest',
     modifiers: { speedMul: TAR_SLOW_MULTIPLIER },
     ui: { icon: 'status_slow', color: PALETTE.oil },
     note: 'GDD §7.1 — the slick refreshes this every time the enemy re-enters it.',
@@ -129,7 +135,9 @@ export const STATUS_DEFS: readonly StatusDef[] = [
     maxStacks: 1,
     defaultDuration: CHILL_IMMUNITY_DURATION,
     refresh: 'refresh',
-    blocks: ['chilled'],
+    // Blocks the layers *and* a directly applied freeze; leaves `wet` alone so
+    // the conduct combo still works on a target that just thawed.
+    blocks: ['chilled', 'frozen'],
     ui: { icon: 'status_chill_immune', color: PALETTE.ice },
     note: 'GDD §7.3.1 — the 3s window that makes perma-freeze impossible.',
   },

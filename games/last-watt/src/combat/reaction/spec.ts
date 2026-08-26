@@ -51,9 +51,13 @@ export type ConditionSpec =
   | { kind: 'sourceHasTag'; tag: SourceTag }
   | { kind: 'sourceLacksTag'; tag: SourceTag }
   | { kind: 'damageTypeIs'; damageType: DamageType }
-  /** Single-hit damage threshold — this is the "≥40" in the shatter rule. */
-  | { kind: 'damageAtLeast'; amount: number }
-  | { kind: 'damageAtMost'; amount: number }
+  /**
+   * Damage threshold — the "≥40" in the shatter rule. `of: 'base'` reads the
+   * damage as rolled, before any earlier row rewrote it, which is what
+   * SYSTEMS.md means by `base_damage_per_hit`.
+   */
+  | { kind: 'damageAtLeast'; amount: number; of?: 'current' | 'base' }
+  | { kind: 'damageAtMost'; amount: number; of?: 'current' | 'base' }
   | { kind: 'targetIsFlying'; value: boolean }
   /** Arbitrary marker declared on an EnemyDef (`boss`, `armored`, ...). */
   | { kind: 'targetHasFlag'; flag: string }
@@ -128,6 +132,11 @@ export type EffectSpec =
       damageType?: DamageType;
       tags?: SourceTag[];
       includePrimaryTarget?: boolean;
+      /**
+       * Whether the splash may itself run the reaction table. Defaults to
+       * false: derived damage must not chain-react (SYSTEMS.md decision D3).
+       */
+      canTriggerReactions?: boolean;
     }
   /** Tesla conduct: extra jumps and/or a falloff override for this arc. */
   | { kind: 'chainBonus'; extraJumps?: number; falloffOverride?: number }

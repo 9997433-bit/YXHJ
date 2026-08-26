@@ -46,16 +46,21 @@ export const NO_DAMAGE: DamageResult = Object.freeze({
 });
 
 /**
- * Flat armour subtraction (GDD §8.1: "-5 per hit"), floored at zero rather
- * than at one: chip damage showing 0 is the intended teaching moment in wave 3.
+ * Flat armour subtraction (GDD §8.1: "-5 per hit"), with a floor of 1 so that
+ * chip damage still chips (docs/SYSTEMS.md decision D2). The wave-3 teaching
+ * moment reads the *absorbed* number for its grey "-5" floater, so the floor
+ * does not weaken the lesson.
  */
+export const MIN_DAMAGE_THROUGH_ARMOR = 1;
+
 export function resolveArmor(amount: number, armor: number, ignoreArmor: boolean): {
   applied: number;
   absorbed: number;
 } {
-  if (ignoreArmor || armor <= 0) return { applied: amount, absorbed: 0 };
+  if (ignoreArmor || armor <= 0 || amount <= 0) return { applied: amount, absorbed: 0 };
   const absorbed = Math.min(amount, armor);
-  return { applied: amount - absorbed, absorbed };
+  const applied = Math.max(MIN_DAMAGE_THROUGH_ARMOR, amount - absorbed);
+  return { applied, absorbed };
 }
 
 /** Per-combo and per-tower damage accounting for the GDD §20 balance red lines. */

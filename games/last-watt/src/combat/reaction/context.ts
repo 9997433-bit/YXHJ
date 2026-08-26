@@ -65,6 +65,8 @@ export interface SplashRequest {
   source: AttackSource;
   excludeEnemyId?: EntityId;
   depth: number;
+  /** False (the default) makes this derived damage inert to the table. */
+  canTriggerReactions: boolean;
 }
 
 export interface ReactionContext {

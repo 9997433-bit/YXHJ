@@ -6,10 +6,12 @@
  * X hits Y". Every row is data: the engine in `../reaction/engine.ts` knows
  * how to walk rows, and knows nothing about ice, fire, or lightning.
  *
- * Priority ordering matters in exactly one place: `fire_thaws_frozen` outranks
- * `shatter` and shares its `frozen_consume` mutex, so a flamethrower hitting a
- * frozen enemy thaws it instead of shattering it — the deliberate anti-combo
- * of GDD §7.3.2.
+ * The three rows that match an incoming hit share the `hit_match` mutex and run
+ * in the fixed order `fire_thaw > ice_shatter > oil_ignite`: one hit matches at
+ * most one of them (docs/SYSTEMS.md `evaluation_order`). That ordering is what
+ * makes a flamethrower thaw a frozen enemy instead of shattering it — the
+ * deliberate anti-combo of GDD §7.3.2. `conduct` sits outside the mutex because
+ * it is decided when the coil locks its target, not when the hit lands.
  */
 
 import type { ReactionRow, ReactionTable } from '../reaction/spec';
@@ -37,6 +39,12 @@ import {
   ULTIMATE_OVERLOAD_DURATION,
   WET_DURATION,
 } from './tuning';
+
+/**
+ * Mutex shared by the rows that match an incoming hit, so exactly one of them
+ * can claim it (docs/SYSTEMS.md: "命中一行即停").
+ */
+const HIT_MATCH = 'hit_match';
 
 /**
  * Parameter keys the triggers publish. Rows read them through
@@ -86,12 +94,12 @@ const chillToFreeze: ReactionRow = {
   note: 'GDD §7.3.1 — three chill layers become a 2s freeze.',
 };
 
-const fireThawsFrozen: ReactionRow = {
-  id: 'fire_thaws_frozen',
+const fireThaw: ReactionRow = {
+  id: 'fire_thaw',
   trigger: 'on_hit',
-  // Outranks shatter and shares its mutex: fire never shatters, it thaws.
-  priority: 200,
-  mutex: 'frozen_consume',
+  // First in the fixed evaluation order fire_thaw > ice_shatter > oil_ignite.
+  priority: 300,
+  mutex: HIT_MATCH,
   when: {
     kind: 'allOf',
     of: [
@@ -107,20 +115,22 @@ const fireThawsFrozen: ReactionRow = {
   note: 'GDD §7.3.2 anti-combo — fire on ice: thaw and half damage.',
 };
 
-const shatter: ReactionRow = {
-  id: 'shatter',
+const iceShatter: ReactionRow = {
+  id: 'ice_shatter',
   combo: 'shatter',
   trigger: 'on_hit',
-  priority: 100,
-  mutex: 'frozen_consume',
-  // Depth 1 lets a shatter's splash shatter one frozen neighbour; the splash
-  // of that splash is depth 2 and stops there.
-  maxDepth: 1,
+  priority: 200,
+  mutex: HIT_MATCH,
   when: {
     kind: 'allOf',
     of: [
       { kind: 'targetHasStatus', status: 'frozen' },
-      { kind: 'damageAtLeast', amount: SHATTER_DAMAGE_THRESHOLD },
+      // "Single hit of 40 or more", measured on the damage as rolled.
+      { kind: 'damageAtLeast', amount: SHATTER_DAMAGE_THRESHOLD, of: 'base' },
+      // Splash, damage over time and chain jumps are not single hits.
+      { kind: 'sourceLacksTag', tag: 'splash' },
+      { kind: 'sourceLacksTag', tag: 'dot' },
+      { kind: 'sourceLacksTag', tag: 'chain' },
     ],
   },
   effects: [
@@ -133,9 +143,9 @@ const shatter: ReactionRow = {
       factor: SHATTER_SPLASH_FACTOR,
       ignoreArmor: true,
       damageType: 'cold',
-      // Deliberately does not carry the `shatter` tag: the splash is ordinary
-      // ice damage that may itself shatter another frozen enemy, once.
       tags: ['ice', 'splash'],
+      // Derived damage is inert: no chain-reaction explosions.
+      canTriggerReactions: false,
     },
     { kind: 'removeStatus', status: 'frozen', reason: 'consumed' },
   ],
@@ -170,11 +180,12 @@ const leviathanPlateBreak: ReactionRow = {
 // Combo 2 — 油火 / Oil fire (GDD §7.3.2)
 // ---------------------------------------------------------------------------
 
-const oilFireIgnite: ReactionRow = {
-  id: 'oil_fire_ignite',
+const oilIgnite: ReactionRow = {
+  id: 'oil_ignite',
   combo: 'oil_fire',
   trigger: 'on_hit',
-  priority: 90,
+  priority: 100,
+  mutex: HIT_MATCH,
   when: {
     kind: 'allOf',
     of: [
@@ -271,11 +282,13 @@ const puddleWets: ReactionRow = {
   note: 'GDD §5.1 — puddles tag enemies wet for 6s, which feeds conduct.',
 };
 
-const wetConducts: ReactionRow = {
-  id: 'wet_conducts',
+const conduct: ReactionRow = {
+  id: 'conduct',
   combo: 'conduct',
   trigger: 'on_hit',
-  priority: 100,
+  // Outside the HIT_MATCH mutex on purpose: conduct is decided when the coil
+  // locks its primary target, so it does not consume the hit's match slot.
+  priority: 50,
   when: {
     kind: 'allOf',
     of: [
@@ -300,8 +313,8 @@ const wetConducts: ReactionRow = {
 // Combo 4 — 超载 / Overload (GDD §7.3.4) and the §9 ultimate
 // ---------------------------------------------------------------------------
 
-const capacitorOverload: ReactionRow = {
-  id: 'capacitor_overload',
+const overload: ReactionRow = {
+  id: 'overload',
   combo: 'overload',
   trigger: 'on_activate',
   priority: 100,
@@ -369,18 +382,18 @@ const masterOverload: ReactionRow = {
 export const REACTION_TABLE: ReactionTable = [
   // Combo 1 — shatter
   chillToFreeze,
-  fireThawsFrozen,
-  shatter,
+  fireThaw,
+  iceShatter,
   leviathanPlateBreak,
   // Combo 2 — oil fire
-  oilFireIgnite,
+  oilIgnite,
   oilCellIgnites,
   fireFieldBurns,
   oilCellCoats,
   // Combo 3 — conduct
   puddleWets,
-  wetConducts,
+  conduct,
   // Combo 4 — overload
-  capacitorOverload,
+  overload,
   masterOverload,
 ];

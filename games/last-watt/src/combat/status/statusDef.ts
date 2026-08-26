@@ -43,6 +43,18 @@ export interface StatusDef {
   defaultDuration: Seconds;
   /** What happens when the status is applied while already active. */
   refresh: 'refresh' | 'extend' | 'ignore';
+  /**
+   * What expiry does to a stacked status. `all` drops the whole thing;
+   * `one_stack` peels one layer and restarts the timer, which is how chill
+   * layers decay one at a time instead of vanishing together.
+   */
+  decay?: 'all' | 'one_stack';
+  /**
+   * How a per-application modifier override merges with the incumbent.
+   * `strongest` keeps whichever value is worse for the host, so two slows of
+   * different strengths take the stronger rather than stacking or overwriting.
+   */
+  modifierMerge?: 'replace' | 'strongest';
   /** While active, these statuses cannot be applied to the host. */
   blocks?: StatusId[];
   /** Applying this status removes these (cross-group cancellation). */

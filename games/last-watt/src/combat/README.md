@@ -84,27 +84,32 @@ data/             tuning.ts     — every GDD number, in one place
 
 Twelve rows cover all four combos plus their support behaviour:
 
+Row ids match `docs/SYSTEMS.md` and `data/reactions.json`, which F3 owns.
+
 | Row | Trigger | Fires when | Does |
 |---|---|---|---|
 | `chill_to_freeze` | status changed | 3 chill layers | freeze 2s |
-| `fire_thaws_frozen` | hit | frozen + `fire` tag | half damage, thaw |
-| `shatter` | hit | frozen + damage ≥ 40 | ×2.5, ignore armour, 1-cell splash |
+| `fire_thaw` | hit | frozen + `fire` tag | half damage, thaw |
+| `ice_shatter` | hit | frozen + single hit ≥ 40 | ×2.5, ignore armour, 1-cell splash |
 | `leviathan_plate_break` | hit | `armor_plated` + `shatter` tag | +1 armour-broken stack |
-| `oil_fire_ignite` | hit | oiled + `fire` tag | burning 8/s for 4s |
+| `oil_ignite` | hit | oiled + `fire` tag | burning 8/s for 4s |
 | `oil_cell_ignites` | cell swept | `fire` tag over an oil cell | fire field 5s |
 | `fire_field_burns` | cell entered | cell is on fire | burning |
 | `oil_cell_coats` | cell entered | cell is oiled | oil coating + slow |
 | `puddle_wets` | cell entered | terrain is water | wet 6s |
-| `wet_conducts` | hit | wet + `lightning` tag | +2 jumps, no falloff |
-| `capacitor_overload` | activate | battery ≥ cost | 3×3 overload, then overheat |
+| `conduct` | hit | wet + `lightning` tag | +2 jumps, no falloff |
+| `overload` | activate | battery ≥ cost | 3×3 overload, then overheat |
 | `master_overload` | activate | — | global overload, no overheat, 1.5s EMP |
 
 Two mechanisms are worth knowing before you edit the table:
 
-**Mutex.** `fire_thaws_frozen` (priority 200) and `shatter` (priority 100) share
-the `frozen_consume` mutex, so a flamethrower hitting a frozen enemy thaws it and
-can never shatter it. That is the deliberate anti-combo of GDD §7.3.2, and it is
-expressed as two data fields rather than as an `if`.
+**Mutex.** `fire_thaw` (300), `ice_shatter` (200) and `oil_ignite` (100) share the
+`hit_match` mutex, so one hit matches at most one of them, in that fixed order —
+`SYSTEMS.md`'s "命中一行即停". A flamethrower hitting a frozen enemy therefore
+thaws it and can never shatter or ignite it, which is the deliberate anti-combo
+of GDD §7.3.2, expressed as two data fields rather than as an `if`. `conduct`
+stays outside the mutex because it is decided when the coil locks its primary
+target, not when the hit lands.
 
 **`{ param, fallback }`.** Rows read numbers either literally or from the
 parameter bag the trigger carries. This is how a *tower upgrade* retunes a
@@ -124,8 +129,10 @@ patch: { statusOverrides: [{ status: 'chilled', params: { freezeDuration: 2.5 } 
 The same channel carries the flamethrower's fire-field duration, the tar slick's
 slow strength, and the capacitor's overload/overheat windows.
 
-**Recursion.** A shatter's splash may shatter one frozen neighbour and stops
-there (`maxDepth: 1`). Damage-over-time and splash never re-enter the table.
+**Derived damage is inert.** Only a *single hit* can shatter: the row rejects
+sources tagged `splash`, `dot` or `chain`, and the shatter's own splash is
+declared `canTriggerReactions: false`. There is no chain-reaction path through
+the table (`SYSTEMS.md` decision D3).
 
 ---
 
@@ -138,8 +145,15 @@ Both anti-slop rules are data, expressed as `group` on the status def:
 
 `frozen` additionally blocks `chilled` while active, and its `onEnd` hook grants
 `chill_immune` for 3s **however the freeze ended** — expiry, shatter, or thaw.
-Perma-freeze is therefore structurally impossible rather than prevented by a
-special case in the freeze code.
+`chill_immune` blocks both the layers and a directly applied freeze, but leaves
+`wet` alone so a just-thawed target still conducts. Perma-freeze is therefore
+structurally impossible rather than prevented by a special case in the freeze
+code.
+
+Two smaller rules, both data rather than branches: chill layers decay one at a
+time (`decay: 'one_stack'`, 2s each) so stepping out of the spray does not reset
+the build-up, and slows take the strongest value rather than multiplying
+(`modifierMerge: 'strongest'`, `SYSTEMS.md` decision D12).
 
 ---
 
@@ -195,13 +209,16 @@ shatter, the six sappers P2 releases, and P3's freeze immunity plus its flat
 upgrades, unknown spawn ids, duplicate row ids) and currently reports zero
 problems.
 
-Two resolution details worth knowing, both deliberate:
+Three resolution details worth knowing, all deliberate:
 
 - Reaction rows run *before* armour and multipliers, so the shatter that knocks
   a Leviathan plate off also benefits from it. A 45 swing into a frozen P1
   Leviathan lands for 281 rather than 225.
 - `true` damage bypasses armour **and** damage-taken multipliers, which is what
   keeps P3's self-burn at a flat 30/s regardless of how many plates are gone.
+- Armour leaves a floor of 1 damage through (`SYSTEMS.md` decision D2), while the
+  grey "-5" chip floater reads `absorbedByArmor`, so the wave-3 lesson survives
+  the floor.
 
 For `R1-G1` (tests): assert against `runIceShatterProbe()` and build new probes
 out of `CombatSystem` + `OpenFieldTerrain` directly — no mocking needed, every

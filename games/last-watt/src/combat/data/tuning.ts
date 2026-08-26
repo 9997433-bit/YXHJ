@@ -15,6 +15,8 @@ export const SHATTER_SPLASH_RADIUS = 1;
 export const SHATTER_SPLASH_FACTOR = 1.0;
 /** GDD §7.3.1 — 3 chill layers freeze the target. */
 export const CHILL_STACKS_TO_FREEZE = 3;
+/** Seconds a single chill layer survives without a fresh application. */
+export const CHILL_STACK_DECAY = 2;
 export const FREEZE_DURATION = 2;
 /** GDD §7.3.1 — post-freeze window where chill cannot be re-applied. */
 export const CHILL_IMMUNITY_DURATION = 3;

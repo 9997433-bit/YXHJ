@@ -86,7 +86,7 @@ export function runIceShatterProbe(seconds = 6, dt = 1 / 60): ShatterProbeReport
   });
   system.bus.on('reaction_triggered', (event) => {
     report.rows.push(event.rowId);
-    if (event.rowId !== 'shatter') return;
+    if (event.rowId !== 'ice_shatter') return;
     report.shatteredAt = system.time;
     if (event.impact.hitstop !== undefined) report.hitstopMs = event.impact.hitstop;
     if (event.impact.tip !== undefined) report.tip = event.impact.tip;

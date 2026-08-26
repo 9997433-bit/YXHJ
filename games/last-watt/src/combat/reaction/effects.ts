@@ -87,6 +87,7 @@ const handlers: EffectHandlers = {
       ignoreArmor: spec.ignoreArmor ?? hit.ignoreArmor,
       source: ctx.source,
       depth: ctx.depth + 1,
+      canTriggerReactions: spec.canTriggerReactions ?? false,
     };
     if (hit.combo) request.combo = hit.combo;
     if (!spec.includePrimaryTarget && ctx.target) request.excludeEnemyId = ctx.target.id;
