@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "tsx --test tests/last-watt-rules.test.ts tests/mock-control.test.mjs",
     "typecheck": "tsc --noEmit",
     "selfcheck": "vite build --ssr src/vfx/selfcheck.run.ts --outDir .selfcheck --logLevel warn && node .selfcheck/selfcheck.run.js"
   },
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/three": "^0.185.4",
+    "tsx": "^4.23.12",
     "typescript": "~5.9.3",
     "vite": "^8.2.2"
   }

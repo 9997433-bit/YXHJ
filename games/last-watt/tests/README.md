@@ -1,41 +1,34 @@
 # Last Watt 规则探针
 
-这里的测试把 `docs/GDD-余电.md` 第 5–10 章转换成可执行契约。当前游戏实现尚未合并，因此测试只依赖
-`fixtures/rules-mock.mjs` 中的纯函数 mock，不依赖引擎、资源或其他游戏目录。
+这里的测试把 `docs/GDD-余电.md` 第 5–10 章转换成可执行契约，并直接导入生产模块：
+
+- `src/gameplay` 的 `runGameplaySelfCheck()` 执行地图、寻路、工程、区域和波次不变量。
+- `src/combat` 的 `OpenFieldTerrain` 与 `runIceShatterProbe()` 执行无渲染器的真实战斗链。
+- `fixtures/rules-mock.mjs` 只由 `mock-control.test.mjs` 保留一条旧契约对照，不再作为主测试对象。
 
 ## 运行
 
-需要 Node.js 18 或更高版本，不需要安装第三方依赖。
+需要 Node.js 20.19 或更高版本。先在游戏目录安装依赖：
 
-从仓库根目录运行：
+```bash
+npm --prefix games/last-watt install
+```
+
+从仓库根目录运行真实模块测试和 mock 对照：
 
 ```bash
 npm --prefix games/last-watt/tests test
 ```
 
-或进入本目录运行：
+也可以直接从游戏目录运行：
 
 ```bash
-cd games/last-watt/tests
-npm test
-```
-
-也可以直接运行：
-
-```bash
-node --test games/last-watt/tests/last-watt-rules.test.mjs
+npm --prefix games/last-watt test
 ```
 
 ## 已覆盖契约
 
-- 从核心反向 BFS 的 flow field：所有出怪口都有严格递减、无环、无死路的路径。
-- 挖沟：仅可挖标记路段，检查金币与剩余次数，且操作后每个出怪口仍须连到核心。
-- 冰碎反应表：冻结目标受到单发至少 40 伤害时造成 250% 伤害、1 格溅射、无视护甲并解除冻结。
-- 供电：建造后占用量可等于上限，但不得超过上限。
-- 漏怪：按敌人表扣完整度并扣 10 金；完整度不低于 0，利维坦抵达核心直接失败。
-- 涂层：湿与油共用唯一槽位，后施加者覆盖前者。
-
-## 后续接线
-
-这些测试目前验证的是 GDD 契约和 mock 自洽性，不代表生产实现已经通过。实现模块落地后，应保留同一组断言，
-把 import 替换为生产适配器；涉及 Unity 场景施工计时、UI 禁用态和实际寻路重算时机的行为仍需集成测试。
+- gameplay 自检中的 47 条真实不变量，包括反向 flow field、挖沟/搭桥、堵路拒绝、施工计时、改道、区域失电和波次。
+- combat 的真实冰碎反应表、40 伤害阈值、250% 无视护甲伤害、溅射、命中停顿及冻结后免疫。
+- `OpenFieldTerrain` 无头端口、湿/油唯一涂层槽，以及所有生产敌人的漏怪事件载荷。
+- 一条隔离的旧 mock 对照，确保历史契约夹具仍可执行。
