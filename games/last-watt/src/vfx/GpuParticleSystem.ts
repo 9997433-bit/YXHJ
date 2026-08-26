@@ -49,6 +49,14 @@ export interface EmitParams {
   colorCurve?: number;
   /** 尺寸插值曲线指数，默认 1。>1 让「先胀后停」，<1 让「猛胀再缓」。 */
   sizeCurve?: number;
+  /**
+   * 这颗粒子交给 Bloom 的能量占比，0..1，默认 1（全额）。
+   *
+   * 只影响自发光遮罩 pass，不影响画面里它本身的亮度。给近景会盖住可读信息的
+   * 大号辉光（冰碎亮芯、溅射环）调低，辉光就只在轮廓外围扩散，不会把
+   * 底下的硬边碎片糊平。**不要**用它做整体调暗——那是 `colorStart` 的活。
+   */
+  bloom?: number;
   tile: ParticleTile;
   /** 翻页帧数，火焰用 4 */
   frameCount?: number;
@@ -70,6 +78,7 @@ const FLOATS = {
   colorB: 4,
   drag: 1,
   curve: 2,
+  bloom: 1,
 } as const;
 
 /** 可复现随机源：自检与压测需要逐帧一致的结果。 */
@@ -159,6 +168,7 @@ class ParticleLayer {
     add('aColorB', FLOATS.colorB);
     add('aDrag', FLOATS.drag);
     add('aCurve', FLOATS.curve);
+    add('aBloom', FLOATS.bloom);
 
     // 位置在着色器里演进，包围盒无意义，直接关剔除
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
@@ -174,6 +184,7 @@ class ParticleLayer {
         uPixelScale: { value: 600 },
         uSizeClampPx: { value: new THREE.Vector2(1, 256) },
         uCull: { value: 0 },
+        uMaskPass: { value: 0 },
       },
       transparent: true,
       depthWrite: false,
@@ -189,8 +200,10 @@ class ParticleLayer {
     // Which layer reaches bloom is decided by `uCull`, see `setMaskPass`.
     skipBloomMask(this.points);
     this.points.frustumCulled = false;
-    // 粒子画在血条之下、地面之上（GDD 15.2 防糊规则 ②）
-    this.points.renderOrder = 10;
+    // 粒子画在血条之下、地面之上（GDD 15.2 防糊规则 ②）。
+    // 两层之间的先后顺序写死而不是听凭 three 按材质 id 排：实心冰晶碎片
+    // 必须画在加法辉光**之上**，否则近景那一发亮芯会把碎片的硬边吃掉。
+    this.points.renderOrder = blend === 'additive' ? 10 : 11;
     this.points.name = `lw-particles-${blend}`;
   }
 
@@ -222,8 +235,10 @@ class ParticleLayer {
     const colB = this.attrs.aColorB.array as Float32Array;
     const drag = this.attrs.aDrag.array as Float32Array;
     const curve = this.attrs.aCurve.array as Float32Array;
+    const bloomWeight = this.attrs.aBloom.array as Float32Array;
     const colorCurve = params.colorCurve ?? 1;
     const sizeCurve = params.sizeCurve ?? 1;
+    const bloom = Math.min(Math.max(params.bloom ?? 1, 0), 1);
 
     const jitter = params.positionJitter ?? 0;
     const speed = params.speed ?? 0;
@@ -333,6 +348,7 @@ class ParticleLayer {
       drag[i] = params.drag ?? 0;
       curve[i * 2] = colorCurve;
       curve[i * 2 + 1] = sizeCurve;
+      bloomWeight[i] = bloom;
     }
 
     this.head = (start + n) % this.capacity;
@@ -446,11 +462,15 @@ export class GpuParticleSystem {
    * 自发光遮罩 pass 开关（GDD 15.1「Bloom 只吃自发光」）。
    *
    * 开启时把常规混合层整层剔除——雾、尘土、冰晶碎片是被照亮的物体，不是光源，
-   * 不该进 Bloom；加法混合层本身就是光，照常渲染。
-   * 引擎不调用这个方法也能跑，只是雾会带上一点辉光。
+   * 不该进 Bloom；加法混合层本身就是光，按每颗粒子的 `bloom` 权重照常渲染。
+   * 引擎不调用这个方法也能跑，只是雾会带上一点辉光、大号辉光会盖住碎片。
    */
   setMaskPass(active: boolean): void {
-    this.layers.alpha.uniforms.uCull.value = active ? 1 : 0;
+    const flag = active ? 1 : 0;
+    this.layers.alpha.uniforms.uCull.value = flag;
+    for (const layer of Object.values(this.layers)) {
+      layer.uniforms.uMaskPass.value = flag;
+    }
   }
 
   /**

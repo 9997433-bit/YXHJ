@@ -53,6 +53,31 @@ function emit(
 // 冰碎（GDD 15.2：24 粒带重力旋转冰晶 + 霜痕贴花 3s / 0.5s / 顿帧 60ms / 白闪 1 帧）
 // ---------------------------------------------------------------------------
 
+/**
+ * 冰碎的可读性立法（Round 3，修 R2 遗留缺陷「近景 Bloom 糊白，碎片不可读」）。
+ *
+ * 这一发同时有四样东西挤在一格里：实心碎片、亮芯、溅射环、霜屑。R2 的做法是
+ * 让它们各自尽量亮，结果亮芯 2.9 格宽、峰值提亮 2.6，加法混合叠在碎片上，
+ * Bloom 再把这团能量摊开一圈——`readability.probe.mjs` 实测冰碎后 100ms
+ * 有 28% 的近景像素三通道同时顶到 0.9 以上，硬边多面体的边缘能量塌到 0.041。
+ *
+ * 三条规矩，效果代码往后照抄：
+ * 1. **碎片是主角，辉光是配角**：主体走 alpha 层（本来就被遮罩 pass 剔出 Bloom），
+ *    并且渲染在加法层之上；亮芯与溅射环用 `bloom` 权重把交给 Bloom 的能量压掉大半。
+ * 2. **亮芯先于碎片退场**：它的任务是给「咔嚓」一个视觉锚点，不是照亮现场。
+ *    寿命 75ms，在碎片飞开之前就没了，两者不抢同一段时间窗。
+ * 3. **峰值留出色调余量**：ACES 会把 >1 的通道全压向白，冰白的蓝调是「这是冰」
+ *    的唯一线索，所以碎片本体的峰值刻意压在溢出点以下。
+ */
+const SHARD_BLOOM = {
+  /** 亮芯：只把 45% 的能量交给 Bloom，剩下的留在 beauty pass 里当硬芯 */
+  core: 0.45,
+  /** 溅射环：细环，辉光一摊开就变成一圈白雾，压到 30% */
+  ring: 0.3,
+  /** 霜屑：小而多，全额进 Bloom 会在爆点糊出一团奶白 */
+  dust: 0.5,
+} as const;
+
 export function playIceShatter(
   ctx: VfxContext,
   position: Vec3Like,
@@ -76,12 +101,15 @@ export function playIceShatter(
       drag: 0.9,
       life: 0.5,
       lifeJitter: 0.14,
-      sizeStart: 0.34 * radius,
-      sizeEnd: 0.26 * radius,
+      // 比 R2 大一档：碎片是这一发唯一要被「看清」的东西，
+      // 近景里它得占到足够多的像素，刻面阶梯才分得出来
+      sizeStart: 0.4 * radius,
+      sizeEnd: 0.3 * radius,
       sizeJitter: 0.45,
-      // 1.25 而不是更高：再亮就三通道全部溢出成纯白，冰白的蓝调会丢掉，
-      // 碎片在暖棕地面上反而变成一堆白纸片
-      colorStart: boost(PALETTE.ice, 1.25),
+      // 0.9 而不是 1.25：图集本身把冰晶的刻面编到了 0.42/0.61/0.85 三档亮度，
+      // 再乘一个 >1 的增益，三档会一起越过 ACES 的拐点压成同一个白，
+      // 碎片就退化成白纸片。压到 0.9 是让这三档在最终画面里仍然分得开。
+      colorStart: boost(PALETTE.ice, 0.9),
       colorEnd: ICE_TAIL,
       // 指数 3：整段寿命里都是实心冰片，只在最后 ~15% 收掉。
       // 线性淡出会让碎片刚出生就半透明，在暖棕地面上退化成一团灰屑。
@@ -93,40 +121,48 @@ export function playIceShatter(
     });
   }
 
-  // 2) 亮芯：一帧就没的十字辉光，配合白闪给「咔嚓」的听感一个视觉锚
+  // 2) 亮芯：75ms 就没的十字辉光，配合白闪给「咔嚓」的听感一个视觉锚。
+  // 尺寸从 R2 的 1.5→2.9 格收到 0.4→1.0：它要读成「一个点炸了」，
+  // 而不是「这一格被照亮了」——后者正是把碎片盖住的那层白。
   emit(ctx, VfxPriority.Combo, {
     count: 1,
     position,
-    life: 0.16,
-    sizeStart: 1.5 * radius,
-    sizeEnd: 2.9 * radius,
+    life: 0.075,
+    sizeStart: 0.4 * radius,
+    sizeEnd: 1.0 * radius,
     colorStart: ICE_HOT,
     colorEnd: withAlpha(PALETTE.ice, 0),
     // 亮芯要「炸出来再瞬间消失」，尺寸走 0.5 次方先猛胀
     sizeCurve: 0.5,
     tile: ParticleTile.Flare,
+    bloom: SHARD_BLOOM.core,
     blend: 'additive',
   });
 
-  // 3) 溅射环：1 格溅射范围的可读边界（GDD 7.3 冰碎带 1 格溅射）
+  // 3) 溅射环：1 格溅射范围的可读边界（GDD 7.3 冰碎带 1 格溅射）。
+  // 环本身是细线，能读出边界；糊白的从来不是这条线，而是它进 Bloom 之后
+  // 摊开的那一圈——所以留住线，砍掉辉光。
   emit(ctx, VfxPriority.Combo, {
     count: 1,
     position: { x: position.x, y: position.y + 0.05, z: position.z },
     life: 0.3,
     sizeStart: 0.5 * radius,
     sizeEnd: 2.4 * radius,
-    colorStart: boost(PALETTE.ice, 1.9),
+    colorStart: boost(PALETTE.ice, 1.15),
     colorEnd: withAlpha(PALETTE.ice, 0),
     sizeCurve: 0.55,
     tile: ParticleTile.Ring,
+    bloom: SHARD_BLOOM.ring,
     blend: 'additive',
   });
 
-  // 4) 霜屑：慢速悬浮的细霜，给爆点留 0.9s 余韵
+  // 4) 霜屑：慢速悬浮的细霜，给爆点留 0.9s 余韵。
+  // 撒开一点（抖动 0.18 → 0.3）：堆在爆点正中央时，14 颗加法粒子叠起来
+  // 等于又给碎片盖了一层白纱
   emit(ctx, VfxPriority.Combo, {
     count: 14,
     position,
-    positionJitter: 0.18,
+    positionJitter: 0.3,
     coneAngle: Math.PI,
     speed: 1.6,
     speedJitter: 0.9,
@@ -137,12 +173,13 @@ export function playIceShatter(
     sizeStart: 0.11,
     sizeEnd: 0.015,
     sizeJitter: 0.4,
-    colorStart: boost(PALETTE.ice, 2.2),
+    colorStart: boost(PALETTE.ice, 1.6),
     colorEnd: ICE_COOL,
     colorCurve: 1.8,
     tile: ParticleTile.Frost,
     randomRotation: true,
     spin: 4,
+    bloom: SHARD_BLOOM.dust,
     blend: 'additive',
   });
 

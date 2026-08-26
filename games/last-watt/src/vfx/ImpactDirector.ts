@@ -62,10 +62,17 @@ export interface ImpactStats {
 
 /** 冲击预设：效果代码引用名字，数值集中在这里调（GDD M4「冲击节流参数调优」）。 */
 export const IMPACT_PRESETS = {
-  /** 冰碎：60ms 顿帧 + 1 帧白闪（GDD 15.2） */
+  /**
+   * 冰碎：60ms 顿帧 + 1 帧白闪（GDD 15.2）。
+   *
+   * 峰值 0.34 而不是 R2 的 0.62：白闪盖的是整块屏幕，0.62 那一档会把冰碎
+   * 头两帧的碎片一起洗白——而那两帧恰恰是「发生了什么」唯一被看见的时刻。
+   * 保持 1 帧峰值（holdMs = 17）满足 GDD 的「白闪 1 帧」，衰减也收得更快，
+   * 让碎片在 70ms 内完全露出来。
+   */
   iceShatter: {
     hitstopMs: 60,
-    flash: { color: PALETTE.ice, holdMs: 17, decayMs: 90, intensity: 0.62 } as FlashRequest,
+    flash: { color: PALETTE.ice, holdMs: 17, decayMs: 70, intensity: 0.34 } as FlashRequest,
   },
   /** 大招·主控过载：80ms 顿帧 + 全屏青闪 + 轻震 0.2s */
   ultimate: {

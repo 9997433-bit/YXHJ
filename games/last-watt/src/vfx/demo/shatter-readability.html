@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>余电 · 冰碎可读性探针</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #070605;
+        color: #dfe9ef;
+        font-family: system-ui, sans-serif;
+      }
+      #lw-stage {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      冰碎近景可读性探针。Round 2 遗留缺陷「冰碎 Bloom 糊白、碎片不可读」的量化闸门。
+
+      在真 Engine（双 composer 自发光遮罩 Bloom）里放一发冰碎，
+      在冰碎后 17/100/200/350ms 读回帧缓冲，算糊白占比 / 边缘能量 / 亮度 / 蓝调。
+
+      - 默认跑生产参数；`?tuning=r2` 跑 Round 2 的参数做同机 A/B。
+      - `readability.probe.mjs` 用无头 Chrome 把两组都跑一遍并出对照表。
+    -->
+    <div id="lw-stage"></div>
+    <script type="module" src="./shatterReadability.ts"></script>
+  </body>
+</html>

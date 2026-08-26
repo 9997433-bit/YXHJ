@@ -25,6 +25,7 @@ attribute vec4 aColorA;  // 起始颜色（线性 RGB + alpha）
 attribute vec4 aColorB;  // 结束颜色
 attribute float aDrag;   // 阻尼系数 k
 attribute vec2 aCurve;   // x: 颜色插值指数, y: 尺寸插值指数（1 = 线性）
+attribute float aBloom;  // 进 Bloom 输入的能量占比（1 = 全额，0 = 只在 beauty pass 里亮）
 
 uniform float uTime;
 uniform float uPixelScale;   // drawingBufferHeight / (2·tan(fov/2))
@@ -33,6 +34,7 @@ uniform vec2  uSizeClampPx;  // 点精灵像素尺寸下限/上限
 varying vec4 vColor;
 varying float vRot;
 varying float vTile;
+varying float vBloom;
 
 void main() {
   float age = uTime - aTime.x;
@@ -45,6 +47,7 @@ void main() {
     vColor = vec4(0.0);
     vRot = 0.0;
     vTile = 0.0;
+    vBloom = 0.0;
     return;
   }
 
@@ -79,6 +82,7 @@ void main() {
   vColor = mix(aColorA, aColorB, ct);
   vColor.a *= subPixelFade;
   vRot = aRot.x + aRot.y * age;
+  vBloom = aBloom;
 
   // 翻页动画：帧号在顶点阶段定好，片元只管采样
   float frames = max(aTile.y, 1.0);
@@ -93,10 +97,12 @@ uniform sampler2D uAtlas;
 uniform float uTilesPerRow;
 uniform float uTileInset;   // 半像素内缩，防 mipmap 邻格渗色
 uniform float uCull;        // 1 = 本层在自发光遮罩 pass 里整层剔除
+uniform float uMaskPass;    // 1 = 当前正在渲染自发光遮罩（Bloom 的输入）
 
 varying vec4 vColor;
 varying float vRot;
 varying float vTile;
+varying float vBloom;
 
 void main() {
   if (uCull > 0.5) discard;
@@ -123,6 +129,12 @@ void main() {
   // 图集 RGB 存的是 0..2 的亮度（编码时 ÷2），这里还原自发光峰值供 Bloom 吃
   vec3 rgb = vColor.rgb * texel.rgb * 2.0;
   float alpha = vColor.a * texel.a;
+
+  // 遮罩 pass 里按每颗粒子的权重给 Bloom 输入打折。
+  // 这一行是「冰碎碎片可读」的物理依据：亮芯与溅射环在 beauty pass 里照常发亮，
+  // 但只把一小部分能量交给 Bloom，辉光就不会在合成时糊成一片盖住碎片。
+  // beauty pass（uMaskPass = 0）完全不受影响，所以调它不会改变效果本身的亮度。
+  rgb *= mix(1.0, vBloom, uMaskPass);
 
   gl_FragColor = vec4(rgb, alpha);
 

@@ -1,4 +1,4 @@
-import { BoxGeometry, Mesh, MeshStandardMaterial, Scene } from 'three';
+import { BoxGeometry, Mesh, MeshStandardMaterial, Points, Scene, type ShaderMaterial } from 'three';
 
 import type { CombatEventMap, CombatEventName } from '../combat/events';
 import { Loop } from '../engine/core/Loop';
@@ -242,13 +242,16 @@ export function runSelfCheck(): CheckResult[] {
 
   check(results, '白闪按二次曲线收干净', () => {
     const impact = new ImpactDirector();
+    const peak = IMPACT_PRESETS.iceShatter.flash.intensity ?? 0;
     impact.requestFlash(IMPACT_PRESETS.iceShatter.flash);
-    assert(impact.state.flash.alpha > 0.5, '白闪峰值不足');
+    assert(impact.state.flash.alpha === peak, '白闪没有立刻到峰值');
+    // 上限是可读性立法：白闪盖的是整块屏幕，超过这个值冰碎头两帧的碎片会被一起洗白
+    assert(peak <= 0.4, `冰碎白闪峰值 ${peak} 过高，会把碎片糊掉`);
     impact.update(17);
     const mid = impact.state.flash.alpha;
     impact.update(120);
     assert(impact.state.flash.alpha === 0, `白闪未收干净，残留 ${impact.state.flash.alpha}`);
-    return `峰值 0.62 → ${mid.toFixed(3)} → 0`;
+    return `峰值 ${peak} → ${mid.toFixed(3)} → 0`;
   });
 
   check(results, '贴花：超出上限淘汰最旧，计数不越界', () => {
@@ -288,10 +291,92 @@ export function runSelfCheck(): CheckResult[] {
     assert(emitted >= 24, `冰碎只发了 ${emitted} 粒，低于 GDD 规定的 24`);
     assert(vfx.decals.count === 1, `霜痕贴花数应为 1，实际 ${vfx.decals.count}`);
     assert(vfx.impact.isHitstopped, '冰碎没有触发顿帧');
-    assert(vfx.impact.state.flash.alpha > 0.5, '冰碎没有触发白闪');
+    assert(vfx.impact.state.flash.alpha > 0.2, '冰碎没有触发白闪');
     assert(vfx.budget.violations().length === 0, '冰碎把预算打爆了');
     vfx.dispose();
     return `${emitted} 粒 + 1 张霜痕 + 60ms 顿帧 + 白闪 ${vfx.impact.state.flash.alpha.toFixed(2)}`;
+  });
+
+  check(results, '粒子：bloom 权重进 attribute，遮罩 pass 切 uniform', () => {
+    const particles = new GpuParticleSystem({ additiveCapacity: 8, alphaCapacity: 8 });
+    const [additive, alpha] = particles.root.children as [Points, Points];
+
+    particles.emit({
+      count: 1,
+      position: ORIGIN,
+      life: 1,
+      sizeStart: 1,
+      sizeEnd: 1,
+      colorStart: PALETTE.ice,
+      colorEnd: PALETTE.ice,
+      tile: ParticleTile.Flare,
+      bloom: 0.3,
+    });
+    const written = additive.geometry.getAttribute('aBloom').array[0];
+    assert(Math.abs(written - 0.3) < 1e-6, `bloom 权重没写进 attribute：${written}`);
+
+    // 不传就是全额：既有效果不会因为多了这个字段而变暗
+    particles.emit({
+      count: 1,
+      position: ORIGIN,
+      life: 1,
+      sizeStart: 1,
+      sizeEnd: 1,
+      colorStart: PALETTE.ice,
+      colorEnd: PALETTE.ice,
+      tile: ParticleTile.Frost,
+    });
+    assert(additive.geometry.getAttribute('aBloom').array[1] === 1, '默认 bloom 权重不是 1');
+
+    const uniforms = (points: Points) =>
+      (points.material as ShaderMaterial).uniforms as Record<string, { value: number }>;
+    particles.setMaskPass(true);
+    assert(uniforms(additive).uMaskPass.value === 1, '加法层没有进入遮罩 pass 模式');
+    assert(uniforms(alpha).uMaskPass.value === 1, '常规层没有进入遮罩 pass 模式');
+    assert(uniforms(alpha).uCull.value === 1, '常规层在遮罩 pass 里没有被剔除');
+    assert(uniforms(additive).uCull.value === 0, '加法层被误剔出 Bloom——它本来就是光');
+
+    particles.setMaskPass(false);
+    assert(uniforms(additive).uMaskPass.value === 0, '遮罩 pass 结束后没有还原');
+    assert(uniforms(alpha).uCull.value === 0, '遮罩 pass 结束后常规层仍被剔除');
+    particles.dispose();
+    return '权重落盘、默认全额、遮罩 pass 开关对称';
+  });
+
+  check(results, '冰碎：辉光让位给碎片（R2「Bloom 糊白」的回归闸门）', () => {
+    const vfx = new VfxSystem();
+    const [additive, alpha] = vfx.particles.root.children as [Points, Points];
+
+    assert(
+      alpha.renderOrder > additive.renderOrder,
+      `实心碎片必须画在加法辉光之上，现在 ${alpha.renderOrder} vs ${additive.renderOrder}`,
+    );
+
+    vfx.beginFrame(16.7);
+    vfx.play('ice-shatter', { position: ORIGIN, splashRadius: 1 });
+    vfx.endFrame();
+
+    // 亮芯 / 溅射环 / 霜屑都在加法层，全都必须打过折：
+    // 只要有一条走全额，近景那一发就会重新糊回一团白
+    const weights = additive.geometry.getAttribute('aBloom').array as ArrayLike<number>;
+    const born = additive.geometry.getAttribute('aTime').array as ArrayLike<number>;
+    let checked = 0;
+    for (let i = 0; i < weights.length; i++) {
+      if (born[i * 2 + 1] <= 0) continue;
+      assert(weights[i] < 1, `加法层第 ${i} 颗粒子仍在全额进 Bloom`);
+      checked++;
+    }
+    assert(checked >= 15, `加法层只发了 ${checked} 粒，冰碎的辉光层不见了`);
+
+    // 碎片本身走 alpha 层，遮罩 pass 会整层剔除，所以它天然不进 Bloom；
+    // 这里盯的是「碎片还在」，别把可读性修成把主体删了
+    const shards = alpha.geometry.getAttribute('aTime').array as ArrayLike<number>;
+    let alive = 0;
+    for (let i = 0; i < shards.length / 2; i++) if (shards[i * 2 + 1] > 0) alive++;
+    assert(alive >= 24, `冰晶碎片只剩 ${alive} 粒，低于 GDD 规定的 24`);
+
+    vfx.dispose();
+    return `碎片 ${alive} 粒画在辉光之上，辉光 ${checked} 粒全部限额进 Bloom`;
   });
 
   check(results, '顿帧期间粒子时钟同步冻结', () => {
