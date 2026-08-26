@@ -125,6 +125,53 @@ function toTerrain(name: string, context: string): TerrainName {
   return terrain;
 }
 
+/**
+ * Canonical terrain vocabulary (INTEGRATION.md §3.7) — the `data/maps/*.json`
+ * legend plus the two runtime-only terrains, `bridge` (a completed bridge job)
+ * and `water` (a bridgeable water surface; no map1 legend letter uses it yet).
+ */
+export type CanonicalTerrainName =
+  | 'wasteland'
+  | 'foundation'
+  | 'road'
+  | 'diggable_road'
+  | 'soft_earth'
+  | 'gully'
+  | 'puddle_road'
+  | 'locked_road'
+  | 'event_sealed'
+  | 'core'
+  | 'bridge'
+  | 'water';
+
+/**
+ * Outbound half of the one-way translation layer: internal `TerrainName` is an
+ * implementation enum, so anything that crosses a module boundary is spelled in
+ * the canonical vocabulary instead (INTEGRATION.md §3, §4.2-2).
+ *
+ * The inbound table is many-to-one — `diggable_road`, `locked_road` and
+ * `event_sealed` all collapse onto a runtime terrain — so this direction picks
+ * the plain-terrain spelling and loses the authoring distinction. That is
+ * intentional: once a cell has been dug or bridged, "it used to be a locked
+ * road" is map-authoring history, not runtime state.
+ */
+export const CANONICAL_TERRAIN_NAMES: Readonly<Record<TerrainName, CanonicalTerrainName>> = {
+  ground: 'foundation',
+  path: 'road',
+  puddle: 'puddle_road',
+  soft_soil: 'soft_earth',
+  trench: 'gully',
+  water: 'water',
+  bridge: 'bridge',
+  rock: 'wasteland',
+  core: 'core',
+  spawn: 'road',
+};
+
+export function toCanonicalTerrain(terrain: TerrainName): CanonicalTerrainName {
+  return CANONICAL_TERRAIN_NAMES[terrain];
+}
+
 /** `data/` first-appearance class keys → gameplay enemy classes. */
 const CLASS_KEY_ALIASES: Readonly<Record<string, string>> = {
   flyer: 'flying',

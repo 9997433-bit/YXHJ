@@ -241,9 +241,34 @@ export class GameSession {
     return requests;
   }
 
-  /** Called by the integrity system, or by the link after a leak. */
-  applyIntegrity(integrity: number): void {
-    this.link.applyIntegrity(integrity);
+  /**
+   * The signed-delta integrity hook (INTEGRATION.md §4.2-4). Anything outside
+   * gameplay that damages or repairs the core comes through here — the assembly
+   * layer bridges `combat:enemy_leaked` to it — and it settles the whole chain:
+   * the number, the `integrity_changed` event, the 80/50 substation latch and
+   * the §10 defeat check.
+   *
+   * Leaks route through `CombatLink` instead, because the leak payload also
+   * carries stolen gold and the Leviathan's instant loss.
+   *
+   * @returns the integrity left after the change.
+   */
+  applyIntegrity(delta: number, reason: string): number {
+    const integrity =
+      delta < 0
+        ? this.economy.damageIntegrity(-delta, reason)
+        : this.economy.healIntegrity(delta, reason);
+    this.link.settleIntegrity(integrity);
+    if (integrity <= 0) this.link.declareDefeat('integrity');
+    return integrity;
+  }
+
+  /**
+   * Sapper-crab hook (INTEGRATION.md §4.2-4): the terrain reverts to a gully and
+   * the flow field re-routes. The engineering charge is *not* refunded.
+   */
+  destroyBridge(cx: number, cy: number): boolean {
+    return this.world.destroyBridge(cx, cy);
   }
 
   towerAt(cx: number, cy: number): PlacedTower | undefined {

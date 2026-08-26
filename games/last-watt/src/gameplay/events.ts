@@ -6,7 +6,8 @@
  * headless tests and benchmarks.
  */
 
-import type { CellCoord, TerrainName } from './types';
+import type { CanonicalTerrainName } from './data/importers';
+import type { CellCoord } from './types';
 
 export type Listener<T> = (payload: T) => void;
 
@@ -77,7 +78,8 @@ export interface GameplayEventMap {
   flow_field_rebuilt: { version: number; unreachableGates: string[] };
 
   engineering_started: EngineeringJobPayload;
-  engineering_completed: EngineeringJobPayload & { terrain: TerrainName };
+  /** `terrain` is the canonical name (INTEGRATION.md §3.7); a dig yields `gully`, a bridge `bridge`. */
+  engineering_completed: EngineeringJobPayload & { terrain: CanonicalTerrainName };
   engineering_rejected: CellCoord & { op: EngineeringOp; reason: string };
   engineering_quota_granted: { dig: number; bridge: number; wave: number };
   bridge_destroyed: CellCoord & { byEnemy?: number };

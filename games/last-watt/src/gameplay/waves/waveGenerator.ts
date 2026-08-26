@@ -272,7 +272,7 @@ function applyFirstAppearance(
   if (!schedule) return groups;
 
   // Keys may be an enemy id or a class name, so `{ flying: 4 }` and
-  // `{ scout_bee: 4 }` mean the same thing.
+  // `{ scout_wasp: 4 }` mean the same thing.
   const firstWaveOf = (enemy: string): number | undefined =>
     schedule[enemy] ?? schedule[enemyMetaOf(enemy, metaTable).class];
 

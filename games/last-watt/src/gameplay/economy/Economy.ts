@@ -222,6 +222,20 @@ export class Economy {
     return this.integrity;
   }
 
+  /** @returns the integrity after the repair; capped at `maxIntegrity`. */
+  healIntegrity(amount: number, reason: string): number {
+    if (amount <= 0) return this.integrity;
+    const before = this.integrity;
+    this.integrity = Math.min(this.rules.maxIntegrity, this.integrity + amount);
+    if (this.integrity === before) return this.integrity;
+    this.events?.emit('integrity_changed', {
+      integrity: this.integrity,
+      delta: this.integrity - before,
+      reason,
+    });
+    return this.integrity;
+  }
+
   /**
    * 波间修复 (GDD §10). Pays 100 for +20, capped at 100. Lost zones stay lost —
    * that is `GameplayWorld.applyIntegrity`'s one-way latch, not a rule here.
@@ -229,13 +243,7 @@ export class Economy {
   repair(): boolean {
     if (this.integrity >= this.rules.maxIntegrity) return false;
     if (!this.spend(this.rules.repairCost, 'repair')) return false;
-    const before = this.integrity;
-    this.integrity = Math.min(this.rules.maxIntegrity, this.integrity + this.rules.repairIntegrity);
-    this.events?.emit('integrity_changed', {
-      integrity: this.integrity,
-      delta: this.integrity - before,
-      reason: 'repair',
-    });
+    this.healIntegrity(this.rules.repairIntegrity, 'repair');
     return true;
   }
 

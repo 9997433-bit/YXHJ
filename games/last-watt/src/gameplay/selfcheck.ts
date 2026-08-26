@@ -736,6 +736,54 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     );
   });
 
+  checker.check('engineering_completed reports the canonical terrain name', () => {
+    const { session } = wiredSession();
+    let terrain = '';
+    session.events.on('engineering_completed', (job) => {
+      terrain = job.terrain;
+    });
+    session.commands.armDig();
+    session.commands.clickCell(8, 2);
+    for (let t = 0; t < 4; t += 1 / 60) session.tick(1 / 60);
+    // Internally the cell is a `trench`; across the boundary it is a `gully`.
+    return expect(
+      terrain === 'gully' && session.world.grid.terrainAt(8, 2) === 'trench',
+      `event=${terrain} internal=${session.world.grid.terrainAt(8, 2)}`,
+    );
+  });
+
+  checker.check('every wave_spawn carries a canonical enemy id (§3.2)', () => {
+    const map = importMapDefJson(map1Json as unknown as MapJson);
+    const waveTable = importWaveTableJson(
+      wavesJson as unknown as WaveTableJson,
+      map.gates.map((gate) => gate.id),
+    );
+    const canonical = new Set<string>(Object.values(ENEMY_IDS));
+    const seen = new Set<string>();
+    const world = new GameplayWorld({ map, waveTable });
+    for (const wave of world.plan) for (const spawn of wave.spawns) seen.add(spawn.enemy);
+    const strays = [...seen].filter((id) => !canonical.has(id));
+    return expect(
+      strays.length === 0 && seen.size > 0,
+      `${seen.size} ids, non-canonical: ${strays.join(', ') || 'none'}`,
+    );
+  });
+
+  checker.check('applyIntegrity takes a signed delta and latches lost zones', () => {
+    const { session } = wiredSession();
+    const damaged = session.applyIntegrity(-25, 'test');
+    const zoneLost = session.world.grid.zones.filter((zone) => !zone.powered).length;
+    // Repairing back above the threshold does not hand the substation back.
+    const healed = session.applyIntegrity(40, 'repair');
+    return expect(
+      damaged === 75 &&
+        zoneLost === 1 &&
+        healed === 100 &&
+        session.world.grid.zones.filter((zone) => !zone.powered).length === 1,
+      `damaged=${damaged} healed=${healed} lost=${zoneLost}`,
+    );
+  });
+
   checker.check('ground units spawn on the gate cell and steer on the shared field', () => {
     const { session, combat } = wiredSession();
     let spawnedAt = { x: -1, y: -1 };
@@ -834,8 +882,7 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     session.commands.buildAt('tesla_coil', 5, 2); // inside zone A
     const tower = session.build.towerAt(5, 2);
     const cap = session.economy.powerCap;
-    session.economy.damageIntegrity(20, 'test');
-    session.applyIntegrity(session.economy.integrity);
+    session.applyIntegrity(-20, 'test');
     return expect(
       tower !== undefined &&
         session.economy.powerCap === cap - 4 &&
@@ -850,8 +897,7 @@ export function runGameplaySelfCheck(): SelfCheckReport {
   checker.check('integrity ≤50 opens the B sluice and re-routes the field', () => {
     const { session } = wiredSession();
     const before = costAt(session.world.groundField, 0, 1);
-    session.economy.damageIntegrity(50, 'test');
-    session.applyIntegrity(session.economy.integrity);
+    session.applyIntegrity(-50, 'test');
     const after = costAt(session.world.groundField, 0, 1);
     // 8 − 4 − 6 would be negative; the cap floors at zero and every powered
     // tower is now dead weight (GDD §6.3-3).

@@ -16,6 +16,7 @@ import type { CellCoord, Seconds, TerrainName } from '../types';
 import { CellFlag } from '../types';
 import type { Grid } from '../grid/Grid';
 import type { EngineeringOp, GameplayEvents } from '../events';
+import { toCanonicalTerrain } from '../data/importers';
 import { checkConnectivity, dependsOnPlayerBridges } from '../pathing/connectivity';
 
 export interface EngineeringConfig {
@@ -311,7 +312,7 @@ export class EngineeringSystem {
         cy: job.cy,
         cost: job.cost,
         duration: job.duration,
-        terrain: job.resultTerrain,
+        terrain: toCanonicalTerrain(job.resultTerrain),
       });
     }
 

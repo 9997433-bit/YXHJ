@@ -202,10 +202,10 @@ export class CombatLink {
 
     this.economy.steal(payload.goldStolen);
     const integrity = this.economy.damageIntegrity(payload.integrityDamage, 'leak');
-    this.applyIntegrity(integrity);
+    this.settleIntegrity(integrity);
 
-    if (payload.lossOnLeak) this.lose('leviathan');
-    else if (integrity <= 0) this.lose('integrity');
+    if (payload.lossOnLeak) this.declareDefeat('leviathan');
+    else if (integrity <= 0) this.declareDefeat('integrity');
   }
 
   /**
@@ -213,8 +213,11 @@ export class CombatLink {
    * consequences: supply cap penalty, blackout for every tower inside the zone,
    * and the sluice the zone was holding shut. Idempotent — the world only
    * reports a zone the first time it crosses its threshold.
+   *
+   * Takes the value, not a delta: `GameSession.applyIntegrity(delta, reason)` is
+   * the hook that does the arithmetic and then calls this.
    */
-  applyIntegrity(integrity: number): void {
+  settleIntegrity(integrity: number): void {
     for (const zone of this.world.applyIntegrity(integrity)) {
       this.economy.applyPowerPenalty(zone.def.powerPenalty);
       for (const tower of this.build.setZonePowered(zone.id, false)) {
@@ -223,7 +226,8 @@ export class CombatLink {
     }
   }
 
-  private lose(reason: DefeatReason): void {
+  /** First reason wins; later calls in the same tick are ignored. */
+  declareDefeat(reason: DefeatReason): void {
     if (this.defeatReason) return;
     this.defeatReason = reason;
     this.events.emit('run_lost', {

@@ -8,20 +8,21 @@
  */
 
 /**
- * Canonical EnemyDef ids — these mirror `src/combat/data/enemies.ts`, which is
- * the owner of the enemy catalogue. The wave generator emits these ids.
+ * Canonical EnemyDef ids — `data/enemies.json` is the single source of truth
+ * (INTEGRATION.md §3.2 / J3). The wave generator emits these ids and nothing
+ * else; every other spelling enters through {@link ENEMY_ID_ALIASES}.
  */
 export const ENEMY_IDS = {
   /** 拾荒虫 — the baseline walker. */
   scavenger: 'scavenger_bug',
   /** 疾行鼠群 — fast and fragile. */
-  sprinter: 'scurry_rats',
+  sprinter: 'swift_rat',
   /** 装甲运输车 — armoured, forces combos. */
-  hauler: 'armored_hauler',
+  hauler: 'armored_truck',
   /** 侦察蜂 — flies straight at the core, ignores the flow field. */
-  scoutBee: 'scout_bee',
+  scoutBee: 'scout_wasp',
   /** 爆破工兵/拆迁蟹 — disables towers and blows up player bridges. */
-  sapperCrab: 'sapper_crab',
+  sapperCrab: 'demo_sapper',
   /** 修理无人机 — heal aura, forces focus fire. */
   repairDrone: 'repair_drone',
   /** 修理母舰 — wave 15 mini boss. */
@@ -31,17 +32,19 @@ export const ENEMY_IDS = {
 } as const;
 
 /**
- * Round-1 vocabulary drift: the authored tables under `data/` and this module's
- * first draft each coined their own names for the same eight enemies. Anything
- * loaded from data is normalised through here so a table written against either
- * vocabulary still resolves.
+ * One-way translation layer (INTEGRATION.md §3): it swallows the two Round-1
+ * vocabularies — combat's old code table and this module's first draft — and
+ * only ever emits canonical ids. Authored tables written against either
+ * spelling still load.
+ *
+ * @deprecated R2 — delete the alias entries in R3 once no table uses them.
  */
 export const ENEMY_ID_ALIASES: Readonly<Record<string, string>> = {
-  // data/enemies.json
-  swift_rat: ENEMY_IDS.sprinter,
-  armored_truck: ENEMY_IDS.hauler,
-  scout_wasp: ENEMY_IDS.scoutBee,
-  demo_sapper: ENEMY_IDS.sapperCrab,
+  // src/combat/data/enemies.ts, Round 1
+  scurry_rats: ENEMY_IDS.sprinter,
+  armored_hauler: ENEMY_IDS.hauler,
+  scout_bee: ENEMY_IDS.scoutBee,
+  sapper_crab: ENEMY_IDS.sapperCrab,
   // this module's first draft
   scavenger: ENEMY_IDS.scavenger,
   sprinter: ENEMY_IDS.sprinter,
@@ -69,52 +72,44 @@ export interface EnemyWaveMeta {
   substitute?: string;
 }
 
+/** Preview icons are derived from the canonical id so the two can never drift. */
 const meta = (
   id: string,
   cls: EnemyClass,
-  icon: string,
   air: boolean,
   threat: EnemyWaveMeta['threat'],
   substitute?: string,
-): EnemyWaveMeta => ({ id, class: cls, icon, air, threat, ...(substitute ? { substitute } : {}) });
+): EnemyWaveMeta => ({
+  id,
+  class: cls,
+  icon: `enemy_${id}`,
+  air,
+  threat,
+  ...(substitute ? { substitute } : {}),
+});
 
 export const DEFAULT_ENEMY_WAVE_META: Readonly<Record<string, EnemyWaveMeta>> = {
-  [ENEMY_IDS.scavenger]: meta(ENEMY_IDS.scavenger, 'basic', 'enemy_scavenger', false, 'normal'),
-  [ENEMY_IDS.sprinter]: meta(ENEMY_IDS.sprinter, 'fast', 'enemy_sprinter', false, 'normal'),
-  [ENEMY_IDS.hauler]: meta(ENEMY_IDS.hauler, 'armored', 'enemy_hauler', false, 'normal'),
-  [ENEMY_IDS.scoutBee]: meta(
-    ENEMY_IDS.scoutBee,
-    'flying',
-    'enemy_scout_bee',
-    true,
-    'breaker',
-    ENEMY_IDS.sprinter,
-  ),
-  [ENEMY_IDS.sapperCrab]: meta(
-    ENEMY_IDS.sapperCrab,
-    'sapper',
-    'enemy_sapper_crab',
-    false,
-    'breaker',
-    ENEMY_IDS.hauler,
-  ),
+  [ENEMY_IDS.scavenger]: meta(ENEMY_IDS.scavenger, 'basic', false, 'normal'),
+  [ENEMY_IDS.sprinter]: meta(ENEMY_IDS.sprinter, 'fast', false, 'normal'),
+  [ENEMY_IDS.hauler]: meta(ENEMY_IDS.hauler, 'armored', false, 'normal'),
+  [ENEMY_IDS.scoutBee]: meta(ENEMY_IDS.scoutBee, 'flying', true, 'breaker', ENEMY_IDS.sprinter),
+  [ENEMY_IDS.sapperCrab]: meta(ENEMY_IDS.sapperCrab, 'sapper', false, 'breaker', ENEMY_IDS.hauler),
   [ENEMY_IDS.repairDrone]: meta(
     ENEMY_IDS.repairDrone,
     'healer',
-    'enemy_repair_drone',
     false,
     'breaker',
     ENEMY_IDS.scavenger,
   ),
-  [ENEMY_IDS.mothership]: meta(ENEMY_IDS.mothership, 'boss', 'enemy_mothership', false, 'boss'),
-  [ENEMY_IDS.leviathan]: meta(ENEMY_IDS.leviathan, 'boss', 'enemy_leviathan', false, 'boss'),
+  [ENEMY_IDS.mothership]: meta(ENEMY_IDS.mothership, 'boss', false, 'boss'),
+  [ENEMY_IDS.leviathan]: meta(ENEMY_IDS.leviathan, 'boss', false, 'boss'),
 };
 
 export function enemyMetaOf(
   id: string,
   table: Readonly<Record<string, EnemyWaveMeta>> = DEFAULT_ENEMY_WAVE_META,
 ): EnemyWaveMeta {
-  return table[id] ?? table[normalizeEnemyId(id)] ?? meta(id, 'basic', `enemy_${id}`, false, 'normal');
+  return table[id] ?? table[normalizeEnemyId(id)] ?? meta(id, 'basic', false, 'normal');
 }
 
 /** Class names accepted wherever an enemy id is, e.g. in `firstAppearance`. */
