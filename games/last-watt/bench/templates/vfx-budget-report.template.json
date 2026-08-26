@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": null,
+  "benchmark": {
+    "id": "last-watt-vfx-budget-probe",
+    "version": null,
+    "kind": "deterministic-node-budget-mock"
+  },
+  "scenario": {
+    "id": null,
+    "name": null,
+    "source": null,
+    "fps": 60,
+    "frameCount": null,
+    "durationSeconds": null,
+    "waves": [16, 17, 18, 19]
+  },
+  "runtime": {
+    "node": null,
+    "platform": null,
+    "arch": null
+  },
+  "budgets": {
+    "activeEmitters": 64,
+    "loopingEmitters": 24,
+    "burstEmitters": 40,
+    "gpuParticles": 20000,
+    "dynamicPointLights": 8,
+    "targetFps": 60,
+    "frameTimeMs": 16.667
+  },
+  "result": {
+    "status": null,
+    "budgetControllerVerified": null,
+    "referenceRenderFpsVerified": false,
+    "referenceRenderFpsStatus": "REQUIRES_UNITY_URP_REFERENCE_HARDWARE_CAPTURE"
+  },
+  "redlines": [],
+  "peaks": {
+    "requested": {
+      "activeEmitters": { "value": null, "frame": null, "wave": null, "waveSecond": null },
+      "loopingEmitters": { "value": null, "frame": null, "wave": null, "waveSecond": null },
+      "burstEmitters": { "value": null, "frame": null, "wave": null, "waveSecond": null },
+      "gpuParticles": { "value": null, "frame": null, "wave": null, "waveSecond": null },
+      "dynamicPointLights": { "value": null, "frame": null, "wave": null, "waveSecond": null }
+    },
+    "actual": {
+      "activeEmitters": { "value": null, "frame": null, "wave": null, "waveSecond": null },
+      "loopingEmitters": { "value": null, "frame": null, "wave": null, "waveSecond": null },
+      "burstEmitters": { "value": null, "frame": null, "wave": null, "waveSecond": null },
+      "gpuParticles": { "value": null, "frame": null, "wave": null, "waveSecond": null },
+      "dynamicPointLights": { "value": null, "frame": null, "wave": null, "waveSecond": null }
+    }
+  },
+  "policy": {
+    "framesWithEmitterDrops": null,
+    "maxEmitterDropsPerFrame": null,
+    "framesWithEnvironmentDrops": null,
+    "maxEnvironmentDropsPerFrame": null,
+    "framesWithLoopRateReduction": null,
+    "maxLoopRateReductionsPerFrame": null,
+    "framesWithPointLightFallback": null,
+    "maxPointLightFallbacksPerFrame": null,
+    "framesWithSameTypeLoopLod": null,
+    "protectedParticleDrops": null
+  },
+  "stressEvent": {
+    "id": "m3-firefields-grid-overload-collision",
+    "wave": 18,
+    "atSecond": null,
+    "globalFrame": null,
+    "requestedEffectStarts": {},
+    "acceptedActiveEffects": {},
+    "demand": null,
+    "actual": null,
+    "policy": null,
+    "sameFrameAssertions": [],
+    "passed": null
+  },
+  "hostCpuDiagnostic": {
+    "scope": "NODE_BUDGET_CONTROLLER_ONLY_NO_GPU_RENDER",
+    "totalProbeTimeMs": null,
+    "meanFrameMs": null,
+    "p50FrameMs": null,
+    "p95FrameMs": null,
+    "p99FrameMs": null,
+    "maxFrameMs": null,
+    "targetFrameMs": 16.667,
+    "p95WithinTarget": null,
+    "authoritativeForRenderFps": false
+  },
+  "waves": [],
+  "notes": []
+}
