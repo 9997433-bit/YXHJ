@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Games</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #150e0a;
+        color: #d8cec4;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      main {
+        padding: 32px;
+        max-width: 44ch;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 15px;
+        letter-spacing: 0.4em;
+        text-transform: uppercase;
+        color: #35e0ff;
+      }
+
+      p {
+        margin: 0 0 24px;
+        font-size: 12px;
+        line-height: 1.8;
+        opacity: 0.6;
+      }
+
+      ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      li + li {
+        margin-top: 10px;
+      }
+
+      a {
+        display: block;
+        padding: 12px 14px;
+        border: 1px solid rgba(53, 224, 255, 0.28);
+        color: #d8cec4;
+        text-decoration: none;
+        font-size: 13px;
+      }
+
+      a:hover,
+      a:focus-visible {
+        border-color: #35e0ff;
+        color: #35e0ff;
+      }
+
+      a span {
+        display: block;
+        margin-top: 4px;
+        font-size: 11px;
+        opacity: 0.55;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Games</h1>
+      <!-- Every game gets its own /<game-id>/ subpath; nothing ships to the site root. -->
+      <p>每个游戏占一个 <code>/&lt;game-id&gt;/</code> 子路径，站点根目录只放这份索引。</p>
+      <ul>
+        <li>
+          <a href="./last-watt/">余电 Last Watt<span>2.5D 斜俯视网格塔防 / WebGL2</span></a>
+        </li>
+      </ul>
+    </main>
+  </body>
+</html>
