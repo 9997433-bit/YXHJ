@@ -21,6 +21,8 @@ export class CameraRig {
   private readonly raycaster = new Raycaster();
   private readonly ndc = new Vector2();
   private readonly corner = new Vector3();
+  private readonly shake = new Vector3();
+  private readonly lookAt = new Vector3();
 
   private zoomIndex = 0;
   private aspect = 1;
@@ -71,6 +73,24 @@ export class CameraRig {
     return out.copy(this.effectiveTarget);
   }
 
+  /** Distance from the eye to the look-at point; VFX needs it to size screen shake. */
+  get focusDistance(): number {
+    return this.fitDistance * CAMERA.zoomSteps[this.zoomIndex];
+  }
+
+  /**
+   * Impact shake, in world units (see `vfx/cameraShake`).
+   *
+   * Eye and look-at point move together, so this is a pure translation: the
+   * locked 55° pitch and yaw survive, and a shaking screen never shifts which
+   * cell sits under the cursor by more than the offset itself.
+   */
+  setShakeOffset(x: number, y: number, z: number): void {
+    if (this.shake.x === x && this.shake.y === y && this.shake.z === z) return;
+    this.shake.set(x, y, z);
+    this.apply();
+  }
+
   setTarget(x: number, z: number): void {
     this.anchor.set(x, 0, z);
     this.apply();
@@ -97,8 +117,9 @@ export class CameraRig {
   private place(distance: number, offsetZ: number): void {
     this.effectiveTarget.copy(this.anchor);
     this.effectiveTarget.z += offsetZ;
-    this.camera.position.copy(this.effectiveTarget).addScaledVector(this.offsetDir, distance);
-    this.camera.lookAt(this.effectiveTarget);
+    this.lookAt.copy(this.effectiveTarget).add(this.shake);
+    this.camera.position.copy(this.lookAt).addScaledVector(this.offsetDir, distance);
+    this.camera.lookAt(this.lookAt);
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld(true);
   }
@@ -117,6 +138,13 @@ export class CameraRig {
   private solveFraming(): void {
     const pitch = MathUtils.degToRad(CAMERA.pitchDeg);
     const halfFov = MathUtils.degToRad(CAMERA.fov) / 2;
+
+    // Solve against the resting rig: a shake offset mid-solve would feed back
+    // into the projected corners and bake itself into the fit distance.
+    const shakeX = this.shake.x;
+    const shakeY = this.shake.y;
+    const shakeZ = this.shake.z;
+    this.shake.set(0, 0, 0);
 
     const worldWidth = GRID.cols * GRID.cellSize;
     const worldDepth = GRID.rows * GRID.cellSize;
@@ -148,6 +176,7 @@ export class CameraRig {
 
     this.fitDistance = distance;
     this.frameOffsetZ = offsetZ;
+    this.shake.set(shakeX, shakeY, shakeZ);
   }
 
   /** NDC bounding box of the board's four ground corners. */

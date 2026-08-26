@@ -1,8 +1,8 @@
-import { Color, FogExp2, Scene, type WebGLRenderer } from 'three';
+import { Color, FogExp2, MathUtils, Scene, Vector2, type WebGLRenderer } from 'three';
 
 import { CAMERA, GRID, SURFACE } from './config';
 import { CameraRig } from './core/CameraRig';
-import { Loop, type FixedUpdateEvent, type RenderEvent } from './core/Loop';
+import { Loop, type FixedUpdateEvent, type FrameBeginEvent, type RenderEvent } from './core/Loop';
 import { createRenderer, describeGpu } from './core/renderer';
 import { Signal } from './core/Signal';
 import { GridView } from './grid/GridView';
@@ -16,6 +16,18 @@ export interface EngineStats {
   drawCalls: number;
   triangles: number;
   programs: number;
+}
+
+const DRAWING_BUFFER = new Vector2();
+
+export interface ViewportEvent {
+  width: number;
+  height: number;
+  pixelRatio: number;
+  /** Height of the drawing buffer in device pixels, what point sprites size against. */
+  drawingBufferHeight: number;
+  /** Vertical field of view in radians. */
+  verticalFov: number;
 }
 
 /**
@@ -42,6 +54,9 @@ export class Engine {
 
   /** Fired when the WebGL context is lost or restored. */
   readonly onContextChange = new Signal<'lost' | 'restored'>();
+
+  /** Fired after every resize, including the one during construction. */
+  readonly onViewportChange = new Signal<ViewportEvent>();
 
   testbed: EmissiveTestbed | null;
 
@@ -76,11 +91,34 @@ export class Engine {
     this.canvas.addEventListener('webglcontextlost', this.handleContextLost, false);
     this.canvas.addEventListener('webglcontextrestored', this.handleContextRestored, false);
 
-    this.loop.onRender.add(this.renderFrame);
+    // The draw is the last thing in the frame: presentation systems get all of
+    // `onRender` to write their state before anything reaches the GPU.
+    this.loop.onPresent.add(this.renderFrame);
   }
 
   get camera() {
     return this.cameraRig.camera;
+  }
+
+  /**
+   * Simulation speed. The VFX layer drives this from `ImpactDirector`
+   * (`vfx.beginFrame().timeScale`) so a shatter hit-stop freezes the sim
+   * without freezing the frame rate.
+   */
+  get timeScale(): number {
+    return this.loop.timeScale;
+  }
+
+  set timeScale(value: number) {
+    this.loop.timeScale = Math.max(value, 0);
+  }
+
+  /**
+   * Subscribe to the start of a frame, before the fixed steps run. This is the
+   * only place where `timeScale` can still change the current frame.
+   */
+  onFrameBegin(listener: (event: FrameBeginEvent) => void): () => void {
+    return this.loop.onFrameBegin.add(listener);
   }
 
   /** Subscribe gameplay logic to the fixed 60 Hz tick. */
@@ -88,7 +126,7 @@ export class Engine {
     return this.loop.onFixedUpdate.add(listener);
   }
 
-  /** Subscribe presentation-only work; runs once per animation frame. */
+  /** Subscribe presentation-only work; runs once per animation frame, before the draw. */
   onRender(listener: (event: RenderEvent) => void): () => void {
     return this.loop.onRender.add(listener);
   }
@@ -109,6 +147,14 @@ export class Engine {
     this.renderer.setSize(width, height, false);
     this.cameraRig.setViewport(width, height);
     this.post.setSize(width, height, pixelRatio);
+
+    this.onViewportChange.emit({
+      width,
+      height,
+      pixelRatio,
+      drawingBufferHeight: this.renderer.getDrawingBufferSize(DRAWING_BUFFER).y,
+      verticalFov: MathUtils.degToRad(this.camera.fov),
+    });
   }
 
   stats(): EngineStats {
@@ -174,6 +220,7 @@ export class Engine {
     this.gridView.dispose();
     this.lighting.dispose();
     this.onContextChange.clear();
+    this.onViewportChange.clear();
 
     this.renderer.dispose();
     this.canvas.remove();

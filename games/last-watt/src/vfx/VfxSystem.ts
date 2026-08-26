@@ -59,8 +59,10 @@ export class VfxSystem {
 
   private readonly ctx: VfxContext;
   private readonly loops = new Map<number, LoopEmitter>();
+  private readonly frameHooks = new Set<(realDtMs: number) => void>();
   private nextEmitterId = 1;
   private scaledDt = 0;
+  private realDtMs = 1000 / 60;
   private frameOpen = false;
 
   constructor(options: VfxSystemOptions = {}) {
@@ -100,12 +102,25 @@ export class VfxSystem {
     this.decals.setMaskPass(active);
   }
 
+  /**
+   * 每帧回调，在 `endFrame` 开头触发，参数是**真实**毫秒（不乘 timeScale）。
+   *
+   * 给桥接层做超时清理用：冷凝雾这类循环发射器要在「塔停火 N 毫秒」后关掉，
+   * 而这个 N 是真实时间——顿帧期间不该把喷雾也一起判定成停火。
+   * @returns 取消订阅
+   */
+  addFrameHook(hook: (realDtMs: number) => void): () => void {
+    this.frameHooks.add(hook);
+    return () => this.frameHooks.delete(hook);
+  }
+
   /** @returns 本帧的冲击状态；`timeScale` 必须被玩法层采纳 */
   beginFrame(realDtMs: number): ImpactState {
     const state = this.impact.update(realDtMs);
     this.budget.beginFrame(realDtMs);
     this.particles.beginFrame();
     this.decals.setCap(this.budget.decalCap);
+    this.realDtMs = realDtMs;
     this.scaledDt = (realDtMs / 1000) * state.timeScale;
     this.frameOpen = true;
     return state;
@@ -115,7 +130,11 @@ export class VfxSystem {
     if (!this.frameOpen) {
       // 容错：引擎忘了调 beginFrame 时，退化成不带顿帧的固定步长
       this.scaledDt = 1 / 60;
+      this.realDtMs = 1000 / 60;
     }
+    // 钩子先跑：它可能停掉本帧不该再吐粒子的循环发射器
+    for (const hook of [...this.frameHooks]) hook(this.realDtMs);
+
     const dt = this.scaledDt;
 
     for (const emitter of this.loops.values()) {
@@ -245,6 +264,7 @@ export class VfxSystem {
   dispose(): void {
     for (const emitter of this.loops.values()) emitter.alive = false;
     this.loops.clear();
+    this.frameHooks.clear();
     this.particles.dispose();
     this.decals.dispose();
   }
