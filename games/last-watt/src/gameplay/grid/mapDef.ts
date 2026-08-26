@@ -13,6 +13,7 @@
 
 import type { CellCoord, Rect, TerrainName } from '../types';
 import { TERRAIN_CODES, CellFlag } from '../types';
+import type { MilestoneId } from '../rules/scope';
 
 export interface GateDef {
   id: string;
@@ -46,6 +47,8 @@ export interface ZoneDef {
   powerPenalty: number;
   /** Barrier that opens together with the loss, giving enemies a shortcut. */
   opensBarrier?: string;
+  /** Milestone the zone starts being losable in; earlier ones ignore it. */
+  activeFromMilestone?: MilestoneId;
 }
 
 export interface BarrierCell extends CellCoord {
@@ -64,6 +67,8 @@ export interface BarrierDef {
   cells?: BarrierCell[];
   /** Opens automatically at the start of this wave (map 1's wave-5 breach). */
   openAtWave?: number;
+  /** Milestone the barrier starts being openable in; earlier ones ignore it. */
+  activeFromMilestone?: MilestoneId;
   label?: string;
 }
 
@@ -143,6 +148,12 @@ export interface MapDef {
   gates: GateDef[];
   barriers?: BarrierDef[];
   zones?: ZoneDef[];
+  /**
+   * 丢区 (GDD §10) per milestone, when the authored table has an opinion — map 1
+   * carries `milestone_gates.m1_zone_loss`. Overrides the `rules/scope.ts`
+   * default and is itself overridden by `GameplayWorldOptions.zoneLoss`.
+   */
+  zoneLossByMilestone?: Partial<Record<MilestoneId, boolean>>;
   engineering: EngineeringDef;
   waveModifiers?: MapWaveModifiers;
   /** Free-form authoring notes; never read by the simulation. */

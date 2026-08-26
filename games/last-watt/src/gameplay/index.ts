@@ -103,7 +103,13 @@ export {
 
 // --- Scope (milestone gates) -----------------------------------------------
 export type { MilestoneId, ScopeRules } from './rules/scope';
-export { CURRENT_MILESTONE, MILESTONE_SCOPE, SCOPE } from './rules/scope';
+export {
+  CURRENT_MILESTONE,
+  MILESTONE_ORDER,
+  MILESTONE_SCOPE,
+  SCOPE,
+  milestoneAtLeast,
+} from './rules/scope';
 
 // --- Engineering -----------------------------------------------------------
 export type {

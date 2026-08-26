@@ -65,14 +65,55 @@ class Checker {
 
 const expect = (condition: boolean, message: string): string | true => (condition ? true : message);
 
-function freshWorld(): GameplayWorld {
-  return new GameplayWorld({ map: MAP1_POWERHOUSE, events: new GameplayEvents() });
+/**
+ * @param options.zoneLoss opts into 丢区 (GDD §10), which the M1 scope lock
+ *                         keeps off by default — see `rules/scope.ts`.
+ */
+function freshWorld(options: { zoneLoss?: boolean } = {}): GameplayWorld {
+  return new GameplayWorld({
+    map: MAP1_POWERHOUSE,
+    events: new GameplayEvents(),
+    ...(options.zoneLoss !== undefined ? { zoneLoss: options.zoneLoss } : {}),
+  });
 }
 
 /** Advances a world until every running engineering job has completed. */
 function settle(world: GameplayWorld, seconds = 4): void {
   const step = 1 / 60;
   for (let t = 0; t < seconds; t += step) world.engineering.tick(step);
+}
+
+/**
+ * A session on the board the game actually ships — `data/maps/map1.json` and
+ * its wave table — rather than this module's greybox. No combat is attached, so
+ * the wave runner settles itself as soon as spawning finishes.
+ */
+function authoredSession(): GameSession {
+  const map = importMapDefJson(map1Json as unknown as MapJson);
+  const waveTable = importWaveTableJson(
+    wavesJson as unknown as WaveTableJson,
+    map.gates.map((gate) => gate.id),
+  );
+  return new GameSession({
+    map,
+    waveTable,
+    events: new GameplayEvents(),
+    enemyMeta: DEFAULT_ENEMY_WAVE_META,
+  });
+}
+
+/** Runs the authored schedule up to and including `upTo`, with nothing to kill. */
+function playAuthoredWaves(session: GameSession, upTo: number): void {
+  for (let n = 1; n <= upTo; n += 1) {
+    session.startWave();
+    for (let t = 0; t < 60 * 300 && session.world.waves.state !== 'preparing'; t += 1) {
+      session.tick(1 / 60);
+    }
+  }
+}
+
+function digTargetsOf(session: GameSession): string[] {
+  return session.world.engineering.legalTargets('dig').map((cell) => `${cell.cx},${cell.cy}`);
 }
 
 interface WiredSession {
@@ -85,7 +126,7 @@ interface WiredSession {
  * occupancy, spawns, bounties, leaks, blackouts and the bridge round-trip.
  */
 function wiredSession(
-  options: { gold?: number; integrity?: number; unlockAll?: boolean } = {},
+  options: { gold?: number; integrity?: number; unlockAll?: boolean; zoneLoss?: boolean } = {},
 ): WiredSession {
   const session = new GameSession({
     map: MAP1_POWERHOUSE,
@@ -96,6 +137,7 @@ function wiredSession(
     },
     enemyMeta: DEFAULT_ENEMY_WAVE_META,
     ...(options.unlockAll ? { isBlueprintUnlocked: (): boolean => true } : {}),
+    ...(options.zoneLoss !== undefined ? { zoneLoss: options.zoneLoss } : {}),
   });
   const combat = new StubCombat({
     movement: session.movement,
@@ -367,8 +409,8 @@ export function runGameplaySelfCheck(): SelfCheckReport {
 
   // -- zones & barriers -----------------------------------------------------
 
-  checker.check('losing zone A cuts power to its cells only', () => {
-    const world = freshWorld();
+  checker.check('丢区 on: losing zone A cuts power to its cells only', () => {
+    const world = freshWorld({ zoneLoss: true });
     const lost = world.applyIntegrity(80);
     const zoneCellPowered = world.grid.isPowered(5, 2);
     const otherPowered = world.grid.isPowered(5, 4);
@@ -378,8 +420,8 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     );
   });
 
-  checker.check('losing zone B opens the sluice and shortens the enemy route', () => {
-    const world = freshWorld();
+  checker.check('丢区 on: losing zone B opens the sluice and shortens the route', () => {
+    const world = freshWorld({ zoneLoss: true });
     const before = costAt(world.groundField, 0, 1);
     world.applyIntegrity(50);
     const after = costAt(world.groundField, 0, 1);
@@ -389,13 +431,42 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     );
   });
 
-  checker.check('integrity thresholds fire once and only once', () => {
-    const world = freshWorld();
+  checker.check('丢区 on: integrity thresholds fire once and only once', () => {
+    const world = freshWorld({ zoneLoss: true });
     const first = world.applyIntegrity(40);
     const second = world.applyIntegrity(40);
     return expect(
       first.length === 2 && second.length === 0,
       `first=${first.length} second=${second.length}`,
+    );
+  });
+
+  // M1 是教学切片，完整度只扣分不丢区（Round 2 主调度裁决 3）。
+
+  checker.check('M1: crossing 80 and 50 reports the breach but loses nothing', () => {
+    const world = freshWorld();
+    let announced = 0;
+    world.events.on('zone_lost', () => {
+      announced += 1;
+    });
+    const lost = world.applyIntegrity(40);
+    const breached = world.breachedZones(40);
+    return expect(
+      lost.length === 0 &&
+        announced === 0 &&
+        breached.length === 2 &&
+        world.grid.zones.every((zone) => zone.powered),
+      `lost=${lost.length} events=${announced} breached=${breached.length}`,
+    );
+  });
+
+  checker.check('M1: the sluice stays shut however low the core gets', () => {
+    const world = freshWorld();
+    const before = costAt(world.groundField, 0, 1);
+    world.applyIntegrity(0);
+    return expect(
+      costAt(world.groundField, 0, 1) === before && world.grid.terrainAt(16, 4) !== 'path',
+      `route ${before} -> ${costAt(world.groundField, 0, 1)} sluice=${world.grid.terrainAt(16, 4)}`,
     );
   });
 
@@ -784,7 +855,7 @@ export function runGameplaySelfCheck(): SelfCheckReport {
   });
 
   checker.check('applyIntegrity takes a signed delta and latches lost zones', () => {
-    const { session } = wiredSession();
+    const { session } = wiredSession({ zoneLoss: true });
     const damaged = session.applyIntegrity(-25, 'test');
     const zoneLost = session.world.grid.zones.filter((zone) => !zone.powered).length;
     // Repairing back above the threshold does not hand the substation back.
@@ -891,8 +962,8 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     );
   });
 
-  checker.check('integrity ≤80 loses zone A: cap −4, towers dark, draw kept (D11)', () => {
-    const { session, combat } = wiredSession({ gold: 1000, unlockAll: true });
+  checker.check('丢区 on: integrity ≤80 loses zone A — cap −4, towers dark, draw kept (D11)', () => {
+    const { session, combat } = wiredSession({ gold: 1000, unlockAll: true, zoneLoss: true });
     session.commands.buildAt('tesla_coil', 5, 2); // inside zone A
     const tower = session.build.towerAt(5, 2);
     const cap = session.economy.powerCap;
@@ -908,8 +979,8 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     );
   });
 
-  checker.check('integrity ≤50 opens the B sluice and re-routes the field', () => {
-    const { session } = wiredSession();
+  checker.check('丢区 on: integrity ≤50 opens the B sluice and re-routes the field', () => {
+    const { session } = wiredSession({ zoneLoss: true });
     const before = costAt(session.world.groundField, 0, 1);
     session.applyIntegrity(-50, 'test');
     const after = costAt(session.world.groundField, 0, 1);
@@ -918,6 +989,61 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     return expect(
       before === 32 && after === 21 && session.economy.powerCap === 0,
       `route ${before} -> ${after} cap=${session.economy.powerCap}`,
+    );
+  });
+
+  checker.check('M1: a battered core keeps its cap, its towers and its walls', () => {
+    const { session, combat } = wiredSession({ gold: 1000, unlockAll: true });
+    session.commands.buildAt('tesla_coil', 5, 2); // inside zone A
+    const tower = session.build.towerAt(5, 2);
+    const cap = session.economy.powerCap;
+    const route = costAt(session.world.groundField, 0, 1);
+    session.applyIntegrity(-99, 'test');
+    return expect(
+      tower !== undefined &&
+        session.economy.powerCap === cap &&
+        session.build.towerAt(5, 2)?.powered === true &&
+        combat.isTowerPowered(tower.towerId) === true &&
+        costAt(session.world.groundField, 0, 1) === route &&
+        session.status !== 'lost',
+      `integrity=${session.economy.integrity} cap ${cap} -> ${session.economy.powerCap} route ${route} -> ${costAt(session.world.groundField, 0, 1)}`,
+    );
+  });
+
+  checker.check('M1: integrity 0 still loses the run, and only that', () => {
+    const { session } = wiredSession();
+    let reason = '';
+    let zonesAnnounced = 0;
+    session.events.on('run_lost', (payload) => {
+      reason = payload.reason;
+    });
+    session.events.on('zone_lost', () => {
+      zonesAnnounced += 1;
+    });
+    const atFifty = session.applyIntegrity(-50, 'test');
+    const stillRunning = session.status;
+    session.applyIntegrity(-50, 'test');
+    return expect(
+      atFifty === 50 &&
+        stillRunning !== 'lost' &&
+        session.status === 'lost' &&
+        reason === 'integrity' &&
+        zonesAnnounced === 0,
+      `at50=${atFifty}/${stillRunning} final=${session.status} reason=${reason || 'none'} zones=${zonesAnnounced}`,
+    );
+  });
+
+  checker.check('M1: the snapshot marks a breached threshold without calling it lost', () => {
+    const { session } = wiredSession();
+    session.applyIntegrity(-25, 'test');
+    const integrity = session.snapshot().integrity;
+    const [zoneA, zoneB] = integrity.thresholds;
+    return expect(
+      integrity.lossEnabled === false &&
+        zoneA?.breached === true &&
+        zoneA?.lost === false &&
+        zoneB?.breached === false,
+      `lossEnabled=${integrity.lossEnabled} A=${zoneA?.breached}/${zoneA?.lost} B=${zoneB?.breached}`,
     );
   });
 
@@ -1114,14 +1240,90 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     );
   });
 
-  checker.check('authored map: losing zone B opens the floodgate short-cut', () => {
-    const world = new GameplayWorld({ map: importMapDefJson(map1Json as unknown as MapJson) });
+  checker.check('authored map: the M1 丢区 gate is read from the table, not hard-coded', () => {
+    const map = importMapDefJson(map1Json as unknown as MapJson);
+    const asAuthored = new GameplayWorld({ map });
+    const asM2 = new GameplayWorld({ map, milestone: 'M2' });
+    // Flipping the JSON switch has to flip the runtime (INTEGRATION.md §4.1-5).
+    const flipped = new GameplayWorld({ map: { ...map, zoneLossByMilestone: { M1: true } } });
+    return expect(
+      map.zoneLossByMilestone?.M1 === false &&
+        (map.zones ?? []).every((zone) => zone.activeFromMilestone === 'M2') &&
+        !asAuthored.zoneLossEnabled &&
+        asM2.zoneLossEnabled &&
+        flipped.zoneLossEnabled,
+      `gate=${JSON.stringify(map.zoneLossByMilestone)} m1=${asAuthored.zoneLossEnabled} m2=${asM2.zoneLossEnabled} flipped=${flipped.zoneLossEnabled}`,
+    );
+  });
+
+  checker.check('丢区 on: losing zone B opens the authored floodgate short-cut', () => {
+    // The authored zones carry `active_from_milestone: "M2"`, so this needs the
+    // milestone rather than the raw switch.
+    const world = new GameplayWorld({
+      map: importMapDefJson(map1Json as unknown as MapJson),
+      milestone: 'M2',
+    });
     const before = costAt(world.groundField, 0, 2);
     world.applyIntegrity(50);
     const after = costAt(world.groundField, 0, 2);
     return expect(
       after < before && world.grid.terrainAt(13, 7) === 'path',
       `before=${before} after=${after} gate=${world.grid.terrainAt(13, 7)}`,
+    );
+  });
+
+  // 挖沟教学 (GDD §11 波 5). Before the breach the authored map has no dig worth
+  // teaching on: (8,2)/(9,2) are the only road gate_1 has, and cutting one seals
+  // the gate. The lesson only exists once the side route is open, so these check
+  // that starting wave 5 opens it and that the free charge arrives with it.
+
+  checker.check('挖沟教学: starting wave 5 opens the breach the lesson needs', () => {
+    const session = authoredSession();
+    const sealedBefore = !session.world.grid.isWalkable(0, 5);
+    const before = digTargetsOf(session);
+    playAuthoredWaves(session, 5);
+    const after = digTargetsOf(session);
+    const teaches = ['5,5', '8,2'].every((cell) => after.includes(cell));
+    return expect(
+      sealedBefore && !before.includes('5,5') && teaches,
+      `sealed=${sealedBefore} before=[${before.join(' ')}] after=[${after.join(' ')}]`,
+    );
+  });
+
+  checker.check('挖沟教学: the wave-5 charge is free and points at (5,5)', () => {
+    const session = authoredSession();
+    playAuthoredWaves(session, 5);
+    const before = session.snapshot();
+    const gold = session.economy.gold;
+    const hint = before.engineering.recommended;
+    const dug = session.commands.dig(hint?.cx ?? -1, hint?.cy ?? -1);
+    const after = session.snapshot();
+    return expect(
+      hint?.cx === 5 &&
+        hint.cy === 5 &&
+        before.engineering.digCost === 0 &&
+        before.engineering.freeDig === 1 &&
+        dug.ok &&
+        session.economy.gold === gold &&
+        // The three paid charges the map grants are all still there.
+        after.engineering.digLeft === 3 &&
+        after.engineering.digCost === 50 &&
+        after.engineering.recommended === null,
+      `hint=${hint ? `${hint.cx},${hint.cy}` : 'none'} dug=${dug.ok}/${dug.message} gold ${gold} -> ${session.economy.gold} left=${after.engineering.digLeft}`,
+    );
+  });
+
+  checker.check('挖沟教学: the taught dig puts the enemies back on the long road', () => {
+    const session = authoredSession();
+    playAuthoredWaves(session, 5);
+    const world = session.world;
+    const shortcut = costAt(world.groundField, 0, 5);
+    world.engineering.beginDig(5, 5);
+    settle(world);
+    const closed = costAt(world.groundField, 0, 5);
+    return expect(
+      closed > shortcut && world.grid.terrainAt(5, 5) === 'trench',
+      `side route ${shortcut} -> ${closed} steps, (5,5)=${world.grid.terrainAt(5, 5)}`,
     );
   });
 

@@ -24,6 +24,8 @@ import type {
   ZoneDef,
 } from '../grid/mapDef';
 import { loadMapDef } from '../grid/mapDef';
+import type { MilestoneId } from '../rules/scope';
+import { MILESTONE_ORDER } from '../rules/scope';
 import type { BaseWaveDef, SpawnGroupDef, WaveTableDef } from '../waves/baseWaveTable';
 import { loadWaveTable } from '../waves/baseWaveTable';
 import { normalizeEnemyId } from '../waves/enemyMeta';
@@ -52,12 +54,16 @@ export interface MapJson {
   event_cells?: Array<{
     event: string;
     trigger?: { type: string; wave?: number; value?: number };
+    active_from_milestone?: string;
     cells: Array<{ cell: Cell2; becomes: string }>;
   }>;
+  /** Scope switches the design track owns; see `rules/scope.ts`. */
+  milestone_gates?: { m1_zone_loss?: boolean };
   zones?: Array<{
     id: string;
     name_cn?: string;
     lost_below_integrity: number;
+    active_from_milestone?: string;
     cells: Cell2[];
     on_lost?: { power_cap_delta?: number; open_event?: string };
   }>;
@@ -223,6 +229,8 @@ export function importMapDefJson(json: MapJson): MapDef {
     if (event.trigger?.type === 'wave_start' && event.trigger.wave !== undefined) {
       def.openAtWave = event.trigger.wave;
     }
+    const milestone = toMilestone(event.active_from_milestone, `${context} event "${event.event}"`);
+    if (milestone) def.activeFromMilestone = milestone;
     barrierByEvent.set(event.event, barriers.length);
     barriers.push(def);
   }
@@ -235,14 +243,18 @@ export function importMapDefJson(json: MapJson): MapDef {
     label: gate.name_cn,
   }));
 
-  const zones: ZoneDef[] = (json.zones ?? []).map((zone) => ({
-    id: zone.id,
-    label: zone.name_cn,
-    cells: zone.cells.map(toCoord),
-    triggerIntegrity: zone.lost_below_integrity,
-    powerPenalty: Math.abs(zone.on_lost?.power_cap_delta ?? 0),
-    opensBarrier: zone.on_lost?.open_event,
-  }));
+  const zones: ZoneDef[] = (json.zones ?? []).map((zone) => {
+    const milestone = toMilestone(zone.active_from_milestone, `${context} zone "${zone.id}"`);
+    return {
+      id: zone.id,
+      label: zone.name_cn,
+      cells: zone.cells.map(toCoord),
+      triggerIntegrity: zone.lost_below_integrity,
+      powerPenalty: Math.abs(zone.on_lost?.power_cap_delta ?? 0),
+      opensBarrier: zone.on_lost?.open_event,
+      ...(milestone ? { activeFromMilestone: milestone } : {}),
+    };
+  });
 
   const grants: EngineeringQuotaGrant[] = (json.engineering?.grants ?? []).map((grant) => ({
     wave: grant.wave,
@@ -252,6 +264,7 @@ export function importMapDefJson(json: MapJson): MapDef {
     ...(grant.recommended_cell ? { recommendedCell: toCoord(grant.recommended_cell) } : {}),
   }));
 
+  const zoneLossGates = importZoneLossGates(json);
   const def: MapDef = {
     id: json.id,
     name: json.name_cn ?? json.id,
@@ -262,6 +275,7 @@ export function importMapDefJson(json: MapJson): MapDef {
     gates,
     barriers,
     zones,
+    ...(zoneLossGates ? { zoneLossByMilestone: zoneLossGates } : {}),
     engineering: {
       digQuota: json.engineering?.dig_quota ?? 0,
       bridgeQuota: json.engineering?.bridge_quota ?? 0,
@@ -280,6 +294,24 @@ export function importMapDefJson(json: MapJson): MapDef {
   }
 
   return loadMapDef(def);
+}
+
+function toMilestone(value: string | undefined, context: string): MilestoneId | undefined {
+  if (value === undefined) return undefined;
+  if (!(MILESTONE_ORDER as readonly string[]).includes(value)) {
+    throw new DataImportError(`${context}: unknown milestone "${value}"`);
+  }
+  return value as MilestoneId;
+}
+
+/**
+ * `milestone_gates` keys are named after the milestone they answer for, so they
+ * import as a per-milestone table rather than a single boolean — building M2
+ * must not read M1's switch.
+ */
+function importZoneLossGates(json: MapJson): Partial<Record<MilestoneId, boolean>> | undefined {
+  const m1 = json.milestone_gates?.m1_zone_loss;
+  return m1 === undefined ? undefined : { M1: m1 };
 }
 
 function importWaveModifiers(json: MapJson): MapWaveModifiers {

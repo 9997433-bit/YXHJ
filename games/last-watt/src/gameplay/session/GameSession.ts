@@ -34,6 +34,7 @@ import type { WaveTableDef } from '../waves/baseWaveTable';
 import type { EnemyWaveMeta } from '../waves/enemyMeta';
 import type { WaveEconomyRules, WavePreviewEntry } from '../waves/waveGenerator';
 import type { EngineeringConfig, EngineeringHint } from '../engineering/EngineeringSystem';
+import type { MilestoneId } from '../rules/scope';
 import { GameplayWorld } from '../world';
 import type { EconomyRules } from '../economy/Economy';
 import { Economy } from '../economy/Economy';
@@ -123,9 +124,12 @@ export interface GameSessionOptions {
   events?: GameplayEvents;
   blockedPenalty?: number;
   /**
-   * 丢区 (GDD §10). Off in M1, where integrity only ever costs score and,
-   * at zero, the run — see `rules/scope.ts`.
+   * Scope the run plays under; defaults to `CURRENT_MILESTONE`. M1 is the
+   * tutorial slice, where integrity only ever costs score and, at zero, the
+   * run — see `rules/scope.ts`.
    */
+  milestone?: MilestoneId;
+  /** 丢区 (GDD §10) override, beating both the map table and the milestone. */
   zoneLoss?: boolean;
   /** False when the engine drives `combat.update` itself. */
   driveCombat?: boolean;
@@ -162,6 +166,7 @@ export class GameSession {
       ...(options.waveEconomy ? { economy: options.waveEconomy } : {}),
       ...(options.engineering ? { engineering: options.engineering } : {}),
       ...(options.blockedPenalty !== undefined ? { blockedPenalty: options.blockedPenalty } : {}),
+      ...(options.milestone ? { milestone: options.milestone } : {}),
       ...(options.zoneLoss !== undefined ? { zoneLoss: options.zoneLoss } : {}),
     });
 

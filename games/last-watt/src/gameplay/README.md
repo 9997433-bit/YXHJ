@@ -93,6 +93,23 @@ world.tick(1 / 60);
 |---|---|
 | 完整度增减（漏怪、修复、调试） | `session.applyIntegrity(delta, reason)` → 改数字、发 `integrity_changed`、结算 80/50 丢区、判负，一次搞定（INTEGRATION.md §4.2-4） |
 | 只要丢区结算 | `world.applyIntegrity(n)` 收的是**绝对值**不是增量，返回本次丢掉的变电区。阈值只触发一次，丢区不可赎回 |
+| 只想知道跨没跨阈值 | `world.breachedZones(n)`——纯查询，不改任何状态 |
+
+#### M1 范围锁：完整度只扣分，不丢区
+
+Round 2 主调度裁决 3。M1 是教学切片，所以**跨 80 / 50 不丢变电区**：不削供电上限、不断塔、不开闸。完整度照扣、照显示阈值刻度，**扣到 0 照样判负**——判负是 M1 唯一允许的终局。
+
+开关只有一个，`rules/scope.ts` 的 `CURRENT_MILESTONE`，解析顺序是「调用方 > 配表 > 里程碑默认值」：
+
+```ts
+createGameSession({ map });                      // M1：不丢区
+createGameSession({ map, milestone: 'M2' });     // 丢区按 GDD §10 跑
+createGameSession({ map, zoneLoss: true });      // 只掀总开关，不改里程碑
+```
+
+配表那一层是 `data/maps/map1.json` 的 `milestone_gates.m1_zone_loss` 与 `zones[].active_from_milestone`，导入后落在 `MapDef.zoneLossByMilestone` / `ZoneDef.activeFromMilestone`。改 JSON 就能改行为，代码里没有第二处写死（INTEGRATION.md §4.1-5）。
+
+对 UI：`snapshot().integrity` 多了 `lossEnabled`，每条阈值多了 `breached`（完整度已经跌破这条线）与原有的 `lost`（区真的没了）。M1 下 `lost` 恒为 `false`，刻度旁边不该写「已丢」。
 | 工程扣款 | `GameSession` 监听 `engineering_started` 扣款；`EngineeringSystem` 本身不碰钱包 |
 | 波次奖励 | `waves.notifyWaveCleared()` 返回 `{ reward, earlyBonus, total }`，同时发 `wave_cleared` |
 | 赏金递减 | 每个 `SpawnRequest` 自带 `bountyMultiplier`（波 10 后 0.8、波 15 后 0.6） |
@@ -174,6 +191,15 @@ C  核心              1/2/3 出怪口   L/M/N 闸门组   F  泄洪道      g  
 
 拒绝时 `reason` 是枚举，`blockedGates` 告诉你是哪个口断了。
 
+### 挖沟教学（GDD §11 波 5）
+
+图 1 的挖沟课在波 5 才成立，而且是两件事凑齐才成立：
+
+- **炸墙**。`data/maps/map1.json` 的 `wave5_breach` 事件带 `trigger: { type: "wave_start", wave: 5 }`，导入成 `BarrierDef.openAtWave`；`world.startWave()` 在同步出怪口**之前**调 `grid.openBarriersForWave()` 把它开掉（顺序有意义：`gate_1b` 的出怪格 (0,5) 就在这批墙里）。炸墙前全图只有 5 格软土可挖，(8,2)/(9,2) 是 `gate_1` 唯一的路，挖了就封口；炸墙后支路成环，(4,5)/(5,5)/(6,5) 和 (8,2)/(9,2) 一起变成合法目标。
+- **赠送的那一镐**。同一张表的 `engineering.grants` 里那条带 `free: true` 与 `recommended_cell: [5,5]`。免费次数**优先于**付费配额消耗，不扣金币也不占那 3 次配额，所以 `costOf('dig')` 在它花掉之前返回 0，按钮直接显示「0 金」。
+
+`snapshot().engineering` 因此多了 `freeDig` / `freeBridge` 与 `recommended`（未花掉时是 `{ cx, cy, op, wave }`，花掉即 `null`），棋盘照着 `recommended` 高亮推荐格即可。挖掉 (5,5) 会把支路捷径切断，敌人被赶回 (3,5)→(3,3)→(3,2) 汇入主路——这就是这一课要教的东西。
+
 ---
 
 ## 波次
@@ -224,7 +250,7 @@ INTEGRATION.md §3 把 `data/*.json` 定为 id 的唯一来源，本模块照办
 |---|---|
 | 挖沟封捷径 | (8,2) 的横向连接把蛇形路线从 44 步缩到 32 步；挖掉它，44 步回来，且因为有环路所以合法 |
 | 搭桥引怪 | 第 5 行的沟壑在 (11,5) 缺一格，搭一次桥把路程压到 22 步——玩家在自己的杀伤区正中开门 |
-| 丢 B 区开支路 | `sluice_b` 闸门 (15,3)–(16,5) 是一条 21 步直插核心的路，完整度 ≤50 时打开，沿蛇形路线摆的塔瞬间打空 |
+| 丢 B 区开支路 | `sluice_b` 闸门 (15,3)–(16,5) 是一条 21 步直插核心的路，完整度 ≤50 时打开，沿蛇形路线摆的塔瞬间打空。**M1 不跑这条**，见上面的范围锁 |
 | 第二出怪口 | `gate_south` 波 10 开 |
 | 工程次数 | 挖沟 3 / 搭桥 2，波 15 补发挖沟 1 |
 
@@ -237,11 +263,13 @@ npx esbuild src/gameplay/selfcheck.main.ts --bundle --platform=node --format=esm
   --outfile=/tmp/gp-selfcheck.mjs && node /tmp/gp-selfcheck.mjs
 ```
 
-`selfcheck.ts` 是 73 条 GDD / INTEGRATION 不变量的可执行版本，分三段：
+`selfcheck.ts` 是 82 条 GDD / INTEGRATION 不变量的可执行版本，分三段：
 
 1. **棋盘与波次**（R1）：地形特性、路径长度、施工期通行、堵死拒绝、未开启出怪口、拆桥回退、丢区开闸、乘区缩放、预览与出怪一致、提前开波 +10%。
-2. **战斗接线**（R2）：塔占格与卖塔退格、供电上限拒绝建塔、发电机/电容改上限、挖沟按钮的武装→高亮→落子→解除、地面走场 / 飞行走直线 / 速度乘区、赏金与漏怪、完整度 ≤80 丢 A 区（塔变暗但占用不释放）、完整度 ≤50 开 B 区闸门并重刷场、拆迁蟹炸桥回退、清场后才结算、五波充一次大招、**波 10 第二口开启且两口都能到核心**、HUD 快照一致。
+2. **战斗接线**（R2）：塔占格与卖塔退格、供电上限拒绝建塔、发电机/电容改上限、挖沟按钮的武装→高亮→落子→解除、地面走场 / 飞行走直线 / 速度乘区、赏金与漏怪、拆迁蟹炸桥回退、清场后才结算、五波充一次大招、**波 10 第二口开启且两口都能到核心**、HUD 快照一致。丢区那几条（≤80 丢 A 区、塔变暗但占用不释放、≤50 开 B 区闸门）名字前面带 `丢区 on:`，因为 M1 默认关，它们要显式开开关或跑 `milestone: 'M2'` 才有意义。
 3. **已授权配表**（`data/maps/map1.json` + `data/waves.map1.json` + `data/game_state.defaults.json`）：三个出怪口都能到核心、波 5 炸墙后支路真的更短、推荐的免费挖沟格 (5,5) 在炸墙前非法炸墙后合法、丢 B 区闸门确实开出捷径、沟壑恰好吃满 2 次搭桥配额、全表 20 波跑通、出怪 id 全是 canonical、钱包数值确实来自 JSON。这些是给数据轨的设计反馈，不是本模块的单测。
+
+M1 与教学两组另立标签：`M1:` 那几条盯「跨阈值只报不丢、供电与塔完好、闸门不开、扣到 0 才判负」，`挖沟教学:` 那几条按真实节奏跑到波 5，验证炸墙开了、免费镐指着 (5,5)、花它不掉金币也不吃配额、挖完支路确实变长。
 
 战斗接线那一段用 `integration/stubCombat.ts` 跑：它实现同一个 `CombatPort`，只做移动、出怪、漏怪和事件，不做伤害与开火，所以 gameplay 的自检不依赖 combat 的数值。真正接 `CombatSystem` 的端到端验证归装配层。
 

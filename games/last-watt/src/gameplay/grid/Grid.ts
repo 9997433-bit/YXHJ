@@ -13,6 +13,8 @@ import type { CellCoord, CellData, TerrainName } from '../types';
 import { CellFlag, TERRAIN_CODES, TERRAIN_NAMES, TERRAIN_TRAITS } from '../types';
 import type { BarrierCell, BarrierDef, MapDef, ZoneDef } from './mapDef';
 import { loadMapDef, parseMapLayout, resolveLegend, zoneCells } from './mapDef';
+import type { MilestoneId } from '../rules/scope';
+import { CURRENT_MILESTONE, milestoneAtLeast } from '../rules/scope';
 
 export interface GateState {
   id: string;
@@ -369,11 +371,15 @@ export class Grid implements WalkabilityView {
     return barrier.cells.map(({ cx, cy }) => ({ cx, cy }));
   }
 
-  /** Opens every barrier scheduled for this wave; returns the ones opened. */
-  openBarriersForWave(wave: number): BarrierState[] {
+  /**
+   * Opens every barrier scheduled for this wave; returns the ones opened.
+   * A barrier the authored table defers to a later milestone stays shut.
+   */
+  openBarriersForWave(wave: number, milestone: MilestoneId = CURRENT_MILESTONE): BarrierState[] {
     const opened: BarrierState[] = [];
     for (const barrier of this.barrierStates) {
       if (barrier.open || barrier.def.openAtWave !== wave) continue;
+      if (!milestoneAtLeast(milestone, barrier.def.activeFromMilestone)) continue;
       this.openBarrier(barrier.id);
       opened.push(barrier);
     }

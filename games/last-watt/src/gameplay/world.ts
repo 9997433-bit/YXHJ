@@ -26,7 +26,8 @@ import type { WaveTableDef } from './waves/baseWaveTable';
 import type { EnemyWaveMeta } from './waves/enemyMeta';
 import { WaveRunner } from './waves/WaveRunner';
 import { GridTerrainQuery, FlowFieldMovement } from './adapters/terrainQuery';
-import { SCOPE } from './rules/scope';
+import type { MilestoneId } from './rules/scope';
+import { CURRENT_MILESTONE, MILESTONE_SCOPE, milestoneAtLeast } from './rules/scope';
 
 export interface GameplayWorldOptions {
   map: MapDef;
@@ -36,7 +37,12 @@ export interface GameplayWorldOptions {
   engineering?: Partial<EngineeringConfig>;
   /** Lets engineering report `insufficient_gold`; the economy keeps the wallet. */
   getGold?: () => number;
-  /** 丢区 (GDD §10). Off in M1 — see `rules/scope.ts`. */
+  /**
+   * Scope the run plays under. Defaults to `CURRENT_MILESTONE`, and decides
+   * both the rule defaults and which `activeFromMilestone` content is live.
+   */
+  milestone?: MilestoneId;
+  /** 丢区 (GDD §10) override, beating both the map table and the milestone. */
   zoneLoss?: boolean;
   /**
    * Cost of walking through an impassable cell in the *movement* field. Finite
@@ -58,6 +64,7 @@ export class GameplayWorld {
   readonly terrain: GridTerrainQuery;
   /** Satisfies `combat.MovementDriver` for ground units. */
   readonly movement: FlowFieldMovement;
+  readonly milestone: MilestoneId;
   /** False in M1: thresholds are warning marks, not structural losses. */
   readonly zoneLossEnabled: boolean;
 
@@ -69,7 +76,12 @@ export class GameplayWorld {
     this.events = options.events ?? new GameplayEvents();
     this.grid = new Grid(options.map);
     this.blockedPenalty = options.blockedPenalty ?? 1000;
-    this.zoneLossEnabled = options.zoneLoss ?? SCOPE.zoneLoss;
+    this.milestone = options.milestone ?? CURRENT_MILESTONE;
+    // Caller beats the authored table beats the milestone default.
+    this.zoneLossEnabled =
+      options.zoneLoss ??
+      options.map.zoneLossByMilestone?.[this.milestone] ??
+      MILESTONE_SCOPE[this.milestone].zoneLoss;
 
     this.engineering = new EngineeringSystem({
       grid: this.grid,
@@ -175,7 +187,7 @@ export class GameplayWorld {
    * sluices are not touched here — those go through `applyIntegrity`.
    */
   private openScheduledBarriers(wave: number): void {
-    for (const barrier of this.grid.openBarriersForWave(wave)) {
+    for (const barrier of this.grid.openBarriersForWave(wave, this.milestone)) {
       const cells = barrier.cells.map(({ cx, cy }) => ({ cx, cy }));
       this.events.emit('barrier_opened', { barrierId: barrier.id, cells });
       this.events.emit('terrain_changed', { cells, reason: 'barrier_opened' });
@@ -197,6 +209,11 @@ export class GameplayWorld {
     return this.grid.zones.filter((zone) => integrity <= zone.def.triggerIntegrity);
   }
 
+  /** A zone the authored table has not yet switched on cannot be lost. */
+  private zoneCanBeLost(zone: ZoneState): boolean {
+    return this.zoneLossEnabled && milestoneAtLeast(this.milestone, zone.def.activeFromMilestone);
+  }
+
   /**
    * Called by the integrity system (GDD §10) after every change. Loses every
    * zone whose threshold has been crossed and opens the sluice attached to it.
@@ -215,6 +232,7 @@ export class GameplayWorld {
     for (const zone of this.grid.zones) {
       if (!zone.powered) continue;
       if (integrity > zone.def.triggerIntegrity) continue;
+      if (!this.zoneCanBeLost(zone)) continue;
       this.grid.setZonePowered(zone.id, false);
       const barrierId = zone.def.opensBarrier ?? null;
       const cells = barrierId ? this.grid.openBarrier(barrierId) : [];

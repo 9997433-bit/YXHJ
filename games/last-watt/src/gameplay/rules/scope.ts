@@ -13,12 +13,20 @@
  * the supply cap, does not black out towers and does not open the sluice.
  * Round 2 主调度裁决 3: 「完整度只扣分不丢区」.
  *
- * Callers that need the other behaviour pass the flag explicitly:
- * `createGameSession({ map, zoneLoss: true })`. Once `data/` owns the milestone
- * gates (R3-F3), `CURRENT_MILESTONE` is the one line that moves.
+ * The authored tables say the same thing in their own words — `data/maps/*.json`
+ * carries `milestone_gates.m1_zone_loss` and `active_from_milestone` — and the
+ * importer turns those into `MapDef.zoneLoss` / `ZoneDef.activeFromMilestone`,
+ * which win over the defaults here. Editing the JSON moves the behaviour
+ * (INTEGRATION.md §4.1-5); this file only decides what an unannotated map does.
+ *
+ * A caller that wants the later rules runs the later milestone:
+ * `createGameSession({ map, milestone: 'M2' })`.
  */
 
 export type MilestoneId = 'M1' | 'M2';
+
+/** Oldest first; `milestoneAtLeast` compares on this order. */
+export const MILESTONE_ORDER: readonly MilestoneId[] = ['M1', 'M2'];
 
 export interface ScopeRules {
   /**
@@ -39,3 +47,9 @@ export const CURRENT_MILESTONE: MilestoneId = 'M1';
 
 /** Defaults every gameplay entry point falls back to. */
 export const SCOPE: Readonly<ScopeRules> = MILESTONE_SCOPE[CURRENT_MILESTONE];
+
+/** Is content marked `required` live in `current`? An unmarked one always is. */
+export function milestoneAtLeast(current: MilestoneId, required?: MilestoneId): boolean {
+  if (!required) return true;
+  return MILESTONE_ORDER.indexOf(current) >= MILESTONE_ORDER.indexOf(required);
+}
