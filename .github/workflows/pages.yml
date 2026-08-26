@@ -1,0 +1,75 @@
+name: Deploy games to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'games/last-watt/**'
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
+        continue-on-error: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/games/last-watt/package-lock.json
+
+      - name: Build last-watt
+        working-directory: src/games/last-watt
+        env:
+          # Must match the Pages subpath the artifacts are published under.
+          LW_BASE: /${{ github.event.repository.name }}/last-watt/
+        run: |
+          npm ci
+          npm run build
+
+      - name: Stage site
+        run: |
+          if [ ! -d pages/.git ]; then
+            rm -rf pages
+            mkdir pages
+            git -C pages init -q -b gh-pages
+          fi
+          # Only this game's directory is replaced; sibling games on gh-pages survive.
+          rm -rf pages/last-watt
+          mkdir -p pages/last-watt
+          cp -R src/games/last-watt/dist/. pages/last-watt/
+          cp src/site/index.html pages/index.html
+          touch pages/.nojekyll
+
+      - name: Publish
+        working-directory: pages
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'nothing to publish'
+            exit 0
+          fi
+          git commit -m "deploy: ${{ github.sha }}"
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:gh-pages
