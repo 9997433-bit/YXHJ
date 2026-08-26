@@ -347,6 +347,25 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     );
   });
 
+  checker.check('placing a tower does not rebuild the flow field', () => {
+    const world = freshWorld();
+    void world.groundField;
+    let rebuilds = 0;
+    world.events.on('flow_field_rebuilt', () => {
+      rebuilds += 1;
+    });
+    world.grid.setOccupied(5, 0, true);
+    void world.groundField;
+    const afterTower = rebuilds;
+    world.engineering.beginDig(8, 2);
+    settle(world);
+    void world.groundField;
+    return expect(
+      afterTower === 0 && rebuilds === 1 && !world.grid.isBuildable(5, 0),
+      `afterTower=${afterTower} afterDig=${rebuilds}`,
+    );
+  });
+
   // -- combat-facing adapters -----------------------------------------------
 
   checker.check('the flow-field driver walks a ground unit all the way to the core', () => {

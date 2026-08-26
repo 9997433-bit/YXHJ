@@ -82,7 +82,7 @@ C  核心              1/2/3 出怪口   L/M/N 闸门组   F  泄洪道      g  
 
 地形特性由 `TERRAIN_TRAITS` 统一裁决（walkable / buildable / road / water / bridgeable），不要在别处再写一份判断。`isBuildable` 已经把地形、占位、施工中、变电区断电四件事一起算好了。
 
-**版本号**：任何影响可通行或可建造的改动都会 `grid.version += 1`。flow field 以此为唯一缓存依据，外部系统也可以拿它做脏检查。
+**两个版本号**：`grid.version` 只在**可通行性**变化时自增（挖沟完工、拆桥、开闸），flow field 以它为唯一缓存依据；`grid.buildVersion` 在**可建造性**变化时自增（建塔/卖塔、变电区断电）。分开是为了让建塔不会白白触发一次全图重刷路。
 
 ---
 

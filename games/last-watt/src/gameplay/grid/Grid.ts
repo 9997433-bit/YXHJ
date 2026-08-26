@@ -65,8 +65,14 @@ export class Grid implements WalkabilityView {
   readonly gates: GateState[] = [];
   readonly coreCells: CellCoord[] = [];
 
-  /** Bumped whenever walkability or buildability changes. */
+  /**
+   * Bumped on every walkability change. The flow field caches on this and
+   * nothing else, so placing a tower must not touch it.
+   */
   version = 0;
+
+  /** Bumped on every buildability change (occupancy, zone power). */
+  buildVersion = 0;
 
   private readonly terrain: Uint8Array;
   private readonly baseTerrain: Uint8Array;
@@ -253,7 +259,7 @@ export class Grid implements WalkabilityView {
   /** Called by the build system when a tower or generator is placed or sold. */
   setOccupied(cx: number, cy: number, occupied: boolean): void {
     this.setFlag(cx, cy, CellFlag.Occupied, occupied);
-    this.version += 1;
+    this.buildVersion += 1;
   }
 
   hasFlag(cx: number, cy: number, flag: number): boolean {
@@ -317,7 +323,8 @@ export class Grid implements WalkabilityView {
     const zone = this.zoneById.get(id);
     if (!zone || zone.powered === powered) return false;
     zone.powered = powered;
-    this.version += 1;
+    // Losing a zone kills power, not passability — the flow field is unaffected.
+    this.buildVersion += 1;
     return true;
   }
 

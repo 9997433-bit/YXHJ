@@ -187,6 +187,7 @@ export class GameplayWorld {
       const cells = barrierId ? this.grid.openBarrier(barrierId) : [];
       if (barrierId && cells.length > 0) {
         this.events.emit('barrier_opened', { barrierId, cells });
+        this.events.emit('terrain_changed', { cells, reason: 'barrier_opened' });
       }
       this.events.emit('zone_lost', {
         zoneId: zone.id,
@@ -194,9 +195,6 @@ export class GameplayWorld {
         openedBarrier: barrierId,
       });
       lost.push(zone);
-    }
-    if (lost.length > 0) {
-      this.events.emit('terrain_changed', { cells: [], reason: 'zone_lost' });
     }
     return lost;
   }
