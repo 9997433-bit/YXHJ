@@ -81,23 +81,26 @@ export class FlowFieldMovement {
       guard += 1;
       const cx = Math.floor(enemy.position.x);
       const cy = Math.floor(enemy.position.y);
-
-      // Aim for the centre of the current cell first: turning on cell centres
-      // is what keeps a grid re-route from cutting a corner through a tower.
       const centre = { x: cx + 0.5, y: cy + 0.5 };
-      const atCentre =
-        Math.abs(enemy.position.x - centre.x) < 1e-4 && Math.abs(enemy.position.y - centre.y) < 1e-4;
+
+      // Every waypoint is exactly one cell centre away and the step is clamped
+      // to it, so a unit never turns anywhere but on a centre — which is what
+      // keeps a mid-wave re-route from cutting the corner through a tower.
+      // A unit dropped off-centre walks to its own centre first.
+      const toCentreX = centre.x - enemy.position.x;
+      const toCentreY = centre.y - enemy.position.y;
+      const approachingCentre = toCentreX * enemy.facing.x + toCentreY * enemy.facing.y > 1e-9;
 
       let target: Vec2;
-      if (atCentre) {
+      if (approachingCentre) {
+        target = centre;
+      } else {
         const dir = directionAt(field, cx, cy);
         if (!dir) {
           enemy.reachedGoal = true;
           return;
         }
         target = { x: centre.x + dir.x, y: centre.y + dir.y };
-      } else {
-        target = centre;
       }
 
       const dx = target.x - enemy.position.x;
@@ -110,8 +113,6 @@ export class FlowFieldMovement {
       }
 
       const step = Math.min(budget, distance);
-      enemy.position.x += (dx / distance) * step;
-      enemy.position.y += (dy / distance) * step;
       enemy.facing.x = dx / distance;
       enemy.facing.y = dy / distance;
       enemy.pathProgress += step;
@@ -120,6 +121,9 @@ export class FlowFieldMovement {
       if (step >= distance - 1e-9) {
         enemy.position.x = target.x;
         enemy.position.y = target.y;
+      } else {
+        enemy.position.x += enemy.facing.x * step;
+        enemy.position.y += enemy.facing.y * step;
       }
     }
   }

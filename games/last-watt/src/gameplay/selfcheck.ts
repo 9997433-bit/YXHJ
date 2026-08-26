@@ -9,6 +9,7 @@
  *   npx vite-node src/gameplay/selfcheck.ts
  */
 
+import type { CellCoord } from './types';
 import { CellFlag } from './types';
 import { Grid } from './grid/Grid';
 import { MAP1_POWERHOUSE } from './maps/map1Powerhouse';
@@ -64,6 +65,31 @@ function freshWorld(): GameplayWorld {
 function settle(world: GameplayWorld, seconds = 4): void {
   const step = 1 / 60;
   for (let t = 0; t < seconds; t += step) world.engineering.tick(step);
+}
+
+interface WalkTrail {
+  visited: CellCoord[];
+  reachedGoal: boolean;
+}
+
+/** Drives a stand-in ground unit with the real `FlowFieldMovement`. */
+function walk(world: GameplayWorld, from: CellCoord, speed = 4): WalkTrail {
+  const unit = {
+    position: { x: from.cx + 0.5, y: from.cy + 0.5 },
+    facing: { x: 0, y: 0 },
+    pathProgress: 0,
+    reachedGoal: false,
+  };
+  const visited: CellCoord[] = [{ ...from }];
+
+  for (let step = 0; step < 4000 && !unit.reachedGoal; step += 1) {
+    world.movement.advance(unit, 1 / 60, speed);
+    const cell = { cx: Math.floor(unit.position.x), cy: Math.floor(unit.position.y) };
+    const last = visited[visited.length - 1] as CellCoord;
+    if (cell.cx !== last.cx || cell.cy !== last.cy) visited.push(cell);
+  }
+
+  return { visited, reachedGoal: unit.reachedGoal };
 }
 
 export function runGameplaySelfCheck(): SelfCheckReport {
@@ -318,6 +344,60 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     return expect(
       first.length === 2 && second.length === 0,
       `first=${first.length} second=${second.length}`,
+    );
+  });
+
+  // -- combat-facing adapters -----------------------------------------------
+
+  checker.check('the flow-field driver walks a ground unit all the way to the core', () => {
+    const world = freshWorld();
+    const trail = walk(world, { cx: 0, cy: 1 });
+    const last = trail.visited[trail.visited.length - 1] as { cx: number; cy: number };
+    return expect(
+      trail.reachedGoal && world.grid.terrainAt(last.cx, last.cy) === 'core',
+      `reached=${trail.reachedGoal} last=${last.cx},${last.cy} steps=${trail.visited.length}`,
+    );
+  });
+
+  checker.check('a dig re-routes units that are already on the road', () => {
+    const world = freshWorld();
+    // Park the unit one cell short of the (8,2) short-cut, then close it.
+    const start = { cx: 7, cy: 1 };
+    const before = walk(world, start);
+    world.engineering.beginDig(8, 2);
+    settle(world);
+    const after = walk(world, start);
+    const usedShortcut = (trail: WalkTrail): boolean =>
+      trail.visited.some((cell) => cell.cx === 8 && cell.cy === 2);
+    return expect(
+      usedShortcut(before) && !usedShortcut(after) && after.reachedGoal,
+      `before=${usedShortcut(before)} after=${usedShortcut(after)} reached=${after.reachedGoal}`,
+    );
+  });
+
+  checker.check('the terrain adapter only reports player bridges as bridges', () => {
+    const world = freshWorld();
+    const beforeBuild = world.terrain.isBridge(11, 5);
+    world.engineering.beginBridge(11, 5);
+    settle(world);
+    return expect(
+      !beforeBuild &&
+        world.terrain.isBridge(11, 5) &&
+        !world.terrain.isBuildable(11, 5) &&
+        world.terrain.isRoad(11, 5),
+      `before=${beforeBuild} after=${world.terrain.isBridge(11, 5)}`,
+    );
+  });
+
+  checker.check('the polyline handed to combat is a cell-centre chain', () => {
+    const world = freshWorld();
+    const polyline = world.polylineFromGate('gate_north');
+    const offGrid = polyline.filter(
+      (point) => Math.abs((point.x % 1) - 0.5) > 1e-9 || Math.abs((point.y % 1) - 0.5) > 1e-9,
+    );
+    return expect(
+      polyline.length === 33 && offGrid.length === 0,
+      `length=${polyline.length} offCentre=${offGrid.length}`,
     );
   });
 
