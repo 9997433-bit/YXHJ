@@ -1,4 +1,5 @@
 import type { CombatEventMap, CombatEventName } from '../combat/events';
+import { createIceShatterScenario } from '../combat/scenarios';
 import { GameplayEvents } from '../gameplay/events';
 import { VfxSystem } from '../vfx/VfxSystem';
 import { connectCombatToVfx } from '../vfx/combatBridge';
@@ -236,6 +237,36 @@ export function runSelfCheck(): CheckResult[] {
     assert(audio.diagnostics.played.sfx_build_place === 2, 'detach 之后还在响');
     audio.dispose();
     return '建造 / 挖沟完工 / 开波三处接通，detach 干净';
+  });
+
+  check(results, '接线：真战斗系统跑出来的冰碎，桥真的听得见', () => {
+    // 上面那些用的是 FakeCombatBus，证明的是「桥订阅得对」。这一条换成真的
+    // CombatSystem 跑完整条 GDD §7.3.1 冷却→冻结→碎裂链，证明的是「事件名、
+    // 载荷字段、发射时机」三样都对得上——桥订阅了一个真实存在的信号，
+    // 而不是一个拼错的字符串（拼错了 `on` 也不会报错，只会永远安静）。
+    const harness = createHeadlessAudioContext();
+    const audio = new AudioEngine({ context: harness.context, autoUnlock: false });
+    const { system } = createIceShatterScenario();
+    const bridge = connectGameAudio({ combat: system.bus, audio });
+
+    for (let t = 0; t < 6 * 60; t++) {
+      system.update(1 / 60);
+      // 音频时钟跟着仿真走，否则 6 秒里的每一声都会撞上节流窗口
+      harness.advance(1 / 60);
+    }
+
+    const played = audio.diagnostics.played;
+    assert(played.sfx_shatter_glass >= 1, '真战斗跑完一次冰碎，音效一声没响');
+    assert(played.sfx_freeze >= 1, '真战斗冻结了目标，冻结音效没响');
+    // 冻结的 `end` 相位也走同一条 `frozen` 事件；出声两次说明桥没滤掉解冻
+    assert(
+      played.sfx_freeze <= bridge.requested.sfx_freeze,
+      '记账数比实际发声还少，节流统计错位',
+    );
+
+    bridge.detach();
+    audio.dispose();
+    return `真战斗 6s：冰碎 ${played.sfx_shatter_glass} 声 / 冻结 ${played.sfx_freeze} 声`;
   });
 
   check(results, '声像：按格坐标分左右，且不做满偏', () => {
