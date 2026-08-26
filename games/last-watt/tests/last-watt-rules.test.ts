@@ -19,7 +19,7 @@ for (const result of gameplayReport.results) {
 }
 
 test('gameplay self-check reports no aggregate failures', () => {
-  assert.equal(gameplayReport.results.length, 47);
+  assert.equal(gameplayReport.results.length, 73);
   assert.equal(gameplayReport.passed, gameplayReport.results.length);
   assert.equal(gameplayReport.failed, 0);
   assert.equal(gameplayReport.ok, true);
@@ -149,10 +149,10 @@ test('production statuses keep wet and oil in one coating slot', () => {
 test('every production enemy emits its configured leak payload', () => {
   const expected = new Map<string, [integrityDamage: number, goldStolen: number, lossOnLeak: boolean]>([
     ['scavenger_bug', [2, 10, false]],
-    ['scurry_rats', [2, 10, false]],
-    ['armored_hauler', [4, 10, false]],
-    ['scout_bee', [4, 10, false]],
-    ['sapper_crab', [4, 10, false]],
+    ['swift_rat', [2, 10, false]],
+    ['armored_truck', [4, 10, false]],
+    ['scout_wasp', [4, 10, false]],
+    ['demo_sapper', [4, 10, false]],
     ['repair_drone', [2, 10, false]],
     ['repair_mothership', [15, 10, false]],
     ['leviathan', [100, 0, true]],
