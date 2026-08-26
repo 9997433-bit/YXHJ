@@ -7,7 +7,7 @@
  * becoming a second source of truth.
  */
 
-import type { IconName } from '../ui';
+import type { ComboId, IconName } from '../ui';
 import type { TerrainName } from '../gameplay';
 
 /** `data/game_state.defaults.json` → `defaults` / `limits` / `rules`. */
@@ -60,6 +60,22 @@ export const ENEMY_ICONS: Readonly<Record<string, IconName>> = {
   repair_drone: 'enemy-medic',
   repair_mothership: 'enemy-boss',
   leviathan: 'enemy-boss',
+};
+
+/**
+ * `combat.ComboId` → `ui.ComboId`.
+ *
+ * The two modules named the same four combos differently (`shatter` vs
+ * `ice-shatter`, `oil_fire` vs `oil-fire`). Neither is wrong on its own and
+ * neither should import the other, so the join lives here. Delete this table
+ * once the shared id registry lands and both sides read it.
+ */
+export const COMBO_TIP_IDS: Readonly<Record<string, ComboId>> = {
+  shatter: 'ice-shatter',
+  ice_shatter: 'ice-shatter',
+  oil_fire: 'oil-fire',
+  conduct: 'conduct',
+  overload: 'overload',
 };
 
 export interface TerrainStyle {

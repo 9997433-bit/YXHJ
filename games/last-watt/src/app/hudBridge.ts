@@ -18,7 +18,7 @@ import {
 } from '../ui';
 import type { TowerDef } from '../combat';
 
-import { ECONOMY_DEFAULTS, ENEMY_ICONS, M1_BUILD_MENU } from './config';
+import { COMBO_TIP_IDS, ECONOMY_DEFAULTS, ENEMY_ICONS, M1_BUILD_MENU } from './config';
 import type { Interaction } from './interaction';
 import type { Sim } from './sim';
 
@@ -76,8 +76,11 @@ export class HudBridge {
   }
 
   showComboTip(comboId: string): void {
-    // `ComboToast` validates the id itself and ignores anything it has shown.
-    this.hud.showComboTip(comboId as Parameters<Hud['showComboTip']>[0]);
+    // `ComboToast` looks the id straight up in its tip table and throws on a
+    // miss, so an unmapped combo has to stop here rather than take the frame
+    // down with it.
+    const uiId = COMBO_TIP_IDS[comboId];
+    if (uiId) this.hud.showComboTip(uiId);
   }
 
   build(): HudState {

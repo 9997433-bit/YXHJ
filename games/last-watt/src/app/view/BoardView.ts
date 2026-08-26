@@ -61,6 +61,7 @@ export class BoardView {
   private readonly color = new Color();
 
   private terrainVersion = -1;
+  private gateSignature = '';
   private cursorPulse = 0;
 
   constructor(private readonly grid: Grid) {
@@ -131,8 +132,23 @@ export class BoardView {
 
   /** Rebuilds the relief when the grid's walkability version moves. */
   syncTerrain(force = false): void {
-    if (!force && this.terrainVersion === this.grid.version) return;
+    // Gates open on a wave boundary, which does not always move the walkability
+    // version, so their state is part of the cache key.
+    const gates = this.grid.gates.filter((gate) => gate.open);
+    const signature = gates.map((gate) => gate.id).join(',');
+    if (!force && this.terrainVersion === this.grid.version && this.gateSignature === signature) {
+      return;
+    }
     this.terrainVersion = this.grid.version;
+    this.gateSignature = signature;
+
+    // "Where do they come from" is the second question the player asks after
+    // "where do they go", and the map data gives gate cells ordinary road
+    // terrain, so the marker has to be painted here.
+    const gateCells = new Set<number>();
+    for (const gate of gates) {
+      for (const cell of gate.cells) gateCells.add(cell.cy * this.grid.cols + cell.cx);
+    }
 
     let plain = 0;
     let glow = 0;
@@ -140,7 +156,9 @@ export class BoardView {
     for (let cy = 0; cy < this.grid.rows; cy += 1) {
       for (let cx = 0; cx < this.grid.cols; cx += 1) {
         const terrain = this.grid.terrainAt(cx, cy) as TerrainName;
-        const style = TERRAIN_STYLES[terrain];
+        const style = gateCells.has(cy * this.grid.cols + cx)
+          ? TERRAIN_STYLES.spawn
+          : TERRAIN_STYLES[terrain];
         // Thickness only has to reach below the lowest neighbour; 1.2 covers the
         // deepest trench without paying for geometry nobody can see.
         const depth = style.height + 1.2;
