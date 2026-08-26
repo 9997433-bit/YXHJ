@@ -221,7 +221,7 @@ export class Game {
     // ④ Close the VFX frame before rendering; particle buffers upload on draw.
     this.vfx.endFrame();
 
-    this.hud.tick(realDt);
+    this.hud.tick();
     this.hud.hud.setState(this.hud.build());
     this.hud.hud.applyImpact(impact);
     this.applyShake(impact.shake);

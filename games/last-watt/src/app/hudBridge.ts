@@ -20,7 +20,7 @@ import type { TowerDef } from '../combat';
 
 import { COMBO_TIP_IDS, ECONOMY_DEFAULTS, ENEMY_ICONS, M1_BUILD_MENU } from './config';
 import type { Interaction } from './interaction';
-import type { Sim } from './sim';
+import type { Sim, SimPhase } from './sim';
 
 /** Range in cells, or 0 for buildings that never shoot. */
 export function towerRange(def: TowerDef): number {
@@ -32,12 +32,13 @@ export function towerTargetsAir(def: TowerDef): boolean {
 }
 
 /** How long a rejected build or a wave payout stays on the radio line. */
-const NOTICE_SECONDS = 2.6;
+const NOTICE_MS = 2600;
 
 export class HudBridge {
   readonly hud: Hud;
 
-  private notice: { line: string; id: string; left: number } | null = null;
+  private notice: { line: string; id: string; until: number } | null = null;
+  private deliveredPhase: SimPhase | null = null;
 
   constructor(
     container: HTMLElement,
@@ -65,14 +66,16 @@ export class HudBridge {
    * the timer instead of retriggering the bubble's entry animation.
    */
   notify(line: string, id: string): void {
-    this.notice = { line, id, left: NOTICE_SECONDS };
+    this.notice = { line, id, until: performance.now() + NOTICE_MS };
   }
 
-  /** Wall-clock, not simulated: a notice must still expire during hitstop. */
-  tick(realDt: number): void {
-    if (!this.notice) return;
-    this.notice.left -= realDt;
-    if (this.notice.left <= 0) this.notice = null;
+  /**
+   * Expiry is an absolute wall-clock deadline rather than an accumulated frame
+   * delta: the loop clamps its delta to survive stalls, so on a slow machine a
+   * summed timer runs behind real time and the notice overstays.
+   */
+  tick(): void {
+    if (this.notice && performance.now() >= this.notice.until) this.notice = null;
   }
 
   showComboTip(comboId: string): void {
@@ -191,8 +194,15 @@ export class HudBridge {
     };
   }
 
+  /**
+   * `RadioBubble` re-shows any line whose id it has not just seen, so a phase
+   * line has to be handed over exactly once per phase entry — otherwise every
+   * rejected build would be followed by the deploy hint popping back up.
+   */
   private radio(): HudState['radio'] {
     if (this.notice) return { speaker: '老周', line: this.notice.line, id: this.notice.id };
+    if (this.deliveredPhase === this.sim.phase) return null;
+    this.deliveredPhase = this.sim.phase;
 
     switch (this.sim.phase) {
       case 'defeat':
