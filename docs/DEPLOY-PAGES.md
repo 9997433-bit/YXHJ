@@ -47,6 +47,8 @@ cd ../.preview && python3 -m http.server 8080   # http://localhost:8080/YXHJ/las
 
 `.github/workflows/pages.yml` 在 `main` 上 `games/last-watt/**`、`site/**`
 或 workflow 自身有改动时重建站点。`cursor/pages-**` 分支上也会跑，但只构建、不发布。
+另外挂了一条 6 小时一次的 `schedule`：在 Settings 里开 Pages 不会触发任何事件，
+没有它，「先开 Pages、后来再也没人 push」的仓库会一直空着。
 
 workflow 先读一次 `GET /repos/:owner/:repo/pages`，按当前的 Pages source 决定怎么发：
 
@@ -61,15 +63,21 @@ workflow 先读一次 `GET /repos/:owner/:repo/pages`，按当前的 Pages sourc
 
 ## 仍需人工在 GitHub 网页上完成的一步
 
-**开启 Pages 站点这件事，任何 workflow 都做不到。** 创建 Pages 站点算仓库管理操作，
-需要 `Administration: write`；GitHub 出于安全考虑禁止一切 GitHub App token（包括
-Actions 的 `GITHUB_TOKEN` 和 Cloud Agent 的 token）调这个接口，`permissions:` 里
-写什么都不行，只有用户级 token（PAT/OAuth）才能创建。实测两条路都是 403
-`Resource not accessible by integration`：
+**开启 Pages 站点这件事，任何 workflow 都做不到。** 创建和修改 Pages 站点算仓库管理操作，
+GitHub 返回的 `X-Accepted-Github-Permissions` 写得很清楚：
+
+```
+X-Accepted-Github-Permissions: pages=write,administration=write
+```
+
+`administration` 这一项无法授予任何 GitHub App token——包括 Actions 的 `GITHUB_TOKEN`
+和 Cloud Agent 的 token，`permissions:` 里写什么都拿不到，只有用户级 token（PAT/OAuth）
+才行。实测三条路全是 403 `Resource not accessible by integration`：
 
 ```bash
-gh api -X POST repos/9997433-bit/YXHJ/pages -f build_type=workflow          # 403
-gh api -X POST repos/9997433-bit/YXHJ/pages -f 'source[branch]=gh-pages'    # 403
+gh api -X POST repos/9997433-bit/YXHJ/pages -f build_type=workflow          # 403 创建
+gh api -X POST repos/9997433-bit/YXHJ/pages -f 'source[branch]=gh-pages'    # 403 创建
+gh api -X PUT  repos/9997433-bit/YXHJ/pages -f build_type=workflow          # 403 修改
 ```
 
 `actions/configure-pages` 的 `enablement: true` 走的是同一个接口，同样 403，所以已经从
@@ -81,9 +89,14 @@ workflow 里去掉了。
 → Branch 选 `gh-pages`，目录选 `/ (root)` → Save。**
 
 选 `gh-pages` 分支是因为该分支上已经有构建好的站点（`index.html`、`last-watt/`、`.nojekyll`，
-资源前缀 `/YXHJ/last-watt/`），保存后 1–2 分钟站点就能打开，不用等任何 PR 合并。
+资源前缀 `/YXHJ/last-watt/`），保存后 1–2 分钟站点就能打开，不需要跑任何 workflow。
 
-（选 `GitHub Actions` 也行，但那样要先把本 workflow 合进 `main` 再跑一次才有内容。）
+选 `GitHub Actions` 也能用，但保存的一刻不会触发任何构建，站点会先空着——要么去
+Actions 里手点一次 `Deploy games to GitHub Pages` → `Run workflow`，要么等那条
+6 小时的 `schedule` 自己补上。所以推荐前者。
+
+Branch 必须选 `gh-pages`、目录必须是 `/ (root)`。选 `main` 的任何目录都是 404：
+`main` 上只有源码，没有构建产物。
 
 如果 Actions 推 `gh-pages` 失败并提示权限不足，再检查
 **Settings → Actions → General → Workflow permissions**，选 `Read and write permissions`。

@@ -10,6 +10,11 @@ on:
       - 'site/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
+  # Turning Pages on in Settings fires no event, so a repo that gets its Pages
+  # site created after the last push would sit empty until someone pushed
+  # again. This reconciles it without anyone having to notice.
+  schedule:
+    - cron: '17 */6 * * *'
 
 concurrency:
   group: pages-deploy
@@ -27,21 +32,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # GITHUB_TOKEN may read and deploy to Pages but can never create the site
-      # — that is a repo-admin operation no workflow permission unlocks. So a
-      # missing site is something the owner must fix, not a build failure.
+      # GITHUB_TOKEN may read and deploy to Pages but can never create the site:
+      # POST/PUT /repos/:owner/:repo/pages answer
+      # `X-Accepted-Github-Permissions: pages=write,administration=write`, and no
+      # workflow permission grants administration. So a missing site is something
+      # the owner must fix, not a build failure.
       - name: Probe the Pages configuration
         id: probe
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # gh prints the 404 body on stdout, so read build_type only on success.
+          # gh writes the 404 body to stdout, so read the fields only on success.
           source=none
-          if found=$(gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null); then
-            source=$found
+          branch=
+          path=
+          if json=$(gh api "repos/${{ github.repository }}/pages" 2>/dev/null); then
+            source=$(jq -r '.build_type // "unknown"' <<<"$json")
+            branch=$(jq -r '.source.branch // ""' <<<"$json")
+            path=$(jq -r '.source.path // ""' <<<"$json")
           fi
-          echo "source=$source" >> "$GITHUB_OUTPUT"
-          echo "Pages build_type: $source"
+          {
+            echo "source=$source"
+            echo "branch=$branch"
+            echo "path=$path"
+          } >> "$GITHUB_OUTPUT"
+          echo "Pages build_type=$source branch=$branch path=$path"
 
       - uses: actions/setup-node@v4
         with:
@@ -97,20 +112,26 @@ jobs:
           git commit -m "deploy: ${{ github.sha }}"
           git push "$remote" HEAD:gh-pages
 
-      - name: Report what is still missing
+      - name: Report that Pages is off
         if: steps.probe.outputs.source == 'none'
         run: |
           {
-            echo '### GitHub Pages is not enabled yet'
+            echo '### GitHub Pages is not enabled on this repository'
             echo
-            echo 'The build succeeded and `gh-pages` holds the current site, but the'
-            echo 'repository has no Pages site. No workflow token can create one.'
+            echo 'The build succeeded and `gh-pages` holds a complete, current site,'
+            echo 'but no Pages site exists to serve it. Creating one needs'
+            echo '`administration=write`, which no workflow token can hold.'
             echo
-            echo 'Repo owner, one time: **Settings → Pages → Build and deployment →'
-            echo 'Source → Deploy from a branch → `gh-pages` / `(root)` → Save**.'
+            echo 'Repo owner, once: **Settings → Pages → Build and deployment →'
+            echo 'Source → Deploy from a branch → Branch `gh-pages` `/ (root)` → Save**.'
             echo
             echo 'The site then answers at https://9997433-bit.github.io/YXHJ/last-watt/'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report a branch source this workflow does not feed
+        if: steps.probe.outputs.source == 'legacy' && steps.probe.outputs.branch != 'gh-pages'
+        run: |
+          echo "::warning::Pages serves ${{ steps.probe.outputs.branch }}${{ steps.probe.outputs.path }}, but this workflow publishes to gh-pages / (root). Repoint Settings → Pages at gh-pages / (root)."
 
   deploy:
     needs: build
