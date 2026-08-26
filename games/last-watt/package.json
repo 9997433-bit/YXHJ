@@ -1,0 +1,25 @@
+{
+  "name": "last-watt",
+  "private": true,
+  "version": "0.1.0",
+  "description": "《余电》Last Watt — 2.5D oblique top-down grid tower defense (WebGL2 / Three.js)",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/three": "^0.185.4",
+    "typescript": "~5.9.3",
+    "vite": "^8.2.2"
+  }
+}
