@@ -14,6 +14,9 @@
 
 import type { Seconds } from '../types';
 import type { GameplayEvents } from '../events';
+import type { GameStateDefaultsJson } from '../data/gameStateDefaults';
+import { importEconomyRules } from '../data/gameStateDefaults';
+import defaultsJson from '../../../data/game_state.defaults.json';
 
 export interface EconomyRules {
   startingGold: number;
@@ -24,27 +27,25 @@ export interface EconomyRules {
   batteryChargePerIdlePower: number;
   /** One capacitor activation (GDD §7.1). */
   overloadBatteryCost: number;
+  /** GDD §6.1: a sale pays back `floor(ratio × 投入)`. */
+  sellRefundRatio: number;
   maxIntegrity: number;
   /** 波间修复：100 金 = +20 完整度 (GDD §10). */
   repairCost: number;
   repairIntegrity: number;
-  /** Every leaked enemy also steals gold (GDD §10); the def carries the amount. */
+  /** 主控过载 charges (GDD §9). */
   ultimateChargeEveryWaves: number;
   ultimateMaxCharges: number;
 }
 
-export const DEFAULT_ECONOMY: EconomyRules = {
-  startingGold: 220,
-  basePowerCap: 8,
-  baseBatteryMax: 100,
-  batteryChargePerIdlePower: 0.25,
-  overloadBatteryCost: 20,
-  maxIntegrity: 100,
-  repairCost: 100,
-  repairIntegrity: 20,
-  ultimateChargeEveryWaves: 5,
-  ultimateMaxCharges: 2,
-};
+/**
+ * Read from `data/game_state.defaults.json`, not typed out here: INTEGRATION.md
+ * §4.1-5 forbids hard-coding the 220 / 8 / 100 triple, and acceptance hook §5.4
+ * checks that editing the JSON moves the starting gold.
+ */
+export const DEFAULT_ECONOMY: EconomyRules = importEconomyRules(
+  defaultsJson as unknown as GameStateDefaultsJson,
+);
 
 export interface EconomyOptions {
   rules?: Partial<EconomyRules>;

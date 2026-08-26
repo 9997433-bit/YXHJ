@@ -17,7 +17,10 @@ import { CellFlag } from '../types';
 import type { Grid } from '../grid/Grid';
 import type { EngineeringOp, GameplayEvents } from '../events';
 import { toCanonicalTerrain } from '../data/importers';
+import type { GameStateDefaultsJson } from '../data/gameStateDefaults';
+import { importEngineeringCosts } from '../data/gameStateDefaults';
 import { checkConnectivity, dependsOnPlayerBridges } from '../pathing/connectivity';
+import defaultsJson from '../../../data/game_state.defaults.json';
 
 export interface EngineeringConfig {
   digCost: number;
@@ -32,11 +35,9 @@ export interface EngineeringConfig {
   includeUnopenedGates: boolean;
 }
 
+/** Costs and durations come from `data/game_state.defaults.json` (§4.1-5). */
 export const DEFAULT_ENGINEERING_CONFIG: EngineeringConfig = {
-  digCost: 50,
-  bridgeCost: 80,
-  digDuration: 3,
-  bridgeDuration: 3,
+  ...importEngineeringCosts(defaultsJson as unknown as GameStateDefaultsJson),
   digResult: 'trench',
   bridgeResult: 'bridge',
   includeUnopenedGates: true,

@@ -211,13 +211,17 @@ export { GameSession, createGameSession } from './session/GameSession';
 export { MAP1_POWERHOUSE } from './maps/map1Powerhouse';
 
 // --- data/ importers -------------------------------------------------------
-export type { MapJson, WaveTableJson } from './data/importers';
+export type { CanonicalTerrainName, MapJson, WaveTableJson } from './data/importers';
 export {
+  CANONICAL_TERRAIN_NAMES,
   DataImportError,
   TERRAIN_NAME_ALIASES,
   importMapDefJson,
   importWaveTableJson,
+  toCanonicalTerrain,
 } from './data/importers';
+export type { EngineeringCostDefaults, GameStateDefaultsJson } from './data/gameStateDefaults';
+export { importEconomyRules, importEngineeringCosts } from './data/gameStateDefaults';
 
 // --- Self-check ------------------------------------------------------------
 export type { CheckResult, SelfCheckReport } from './selfcheck';

@@ -85,8 +85,6 @@ export interface BuildSystemOptions {
   currentWave?: () => number;
 }
 
-const SELL_REFUND_FRACTION = 0.7;
-
 /** Before combat is attached every blueprint is simply unknown. */
 const EMPTY_CONTENT: CombatContentView = {
   tower(id: string): never {
@@ -287,7 +285,7 @@ export class BuildSystem {
     // Combat knows about purchased upgrades, so it is the authority on value.
     const refund = this.removeTower
       ? this.removeTower(towerId)
-      : Math.floor(tower.cost * SELL_REFUND_FRACTION);
+      : Math.floor(tower.cost * this.economy.rules.sellRefundRatio);
 
     this.byId.delete(towerId);
     this.byCell.delete(this.grid.index(tower.cx, tower.cy));

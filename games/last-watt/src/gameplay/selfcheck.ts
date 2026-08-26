@@ -24,8 +24,10 @@ import { GameSession } from './session/GameSession';
 import { StubCombat } from './integration/stubCombat';
 import type { MapJson, WaveTableJson } from './data/importers';
 import { importMapDefJson, importWaveTableJson } from './data/importers';
+import type { GameStateDefaultsJson } from './data/gameStateDefaults';
 import map1Json from '../../data/maps/map1.json';
 import wavesJson from '../../data/waves.map1.json';
+import defaultsJson from '../../data/game_state.defaults.json';
 
 export interface CheckResult {
   name: string;
@@ -733,6 +735,18 @@ export function runGameplaySelfCheck(): SelfCheckReport {
     return expect(
       !buttons.dig.enabled && buttons.dig.message === '金币不足' && buttons.dig.badge === 3,
       `enabled=${buttons.dig.enabled} message=${buttons.dig.message} badge=${buttons.dig.badge}`,
+    );
+  });
+
+  checker.check('the wallet starts from data/game_state.defaults.json (§5.4)', () => {
+    const { session } = wiredSession();
+    const json = defaultsJson as unknown as GameStateDefaultsJson;
+    return expect(
+      session.economy.gold === json.defaults.gold &&
+        session.economy.powerCap === json.defaults.power_cap &&
+        session.economy.batteryMax === json.limits.battery_max_base &&
+        session.world.engineering.config.digCost === json.rules.economy.dig_cost_gold,
+      `gold=${session.economy.gold} cap=${session.economy.powerCap} battery=${session.economy.batteryMax}`,
     );
   });
 
