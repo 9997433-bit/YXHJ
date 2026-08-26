@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "generatedAt": null,
   "benchmark": {
     "id": "last-watt-vfx-budget-probe",
@@ -13,7 +13,23 @@
     "fps": 60,
     "frameCount": null,
     "durationSeconds": null,
-    "waves": [16, 17, 18, 19]
+    "waves": [10],
+    "canonicalWaveProfile": {
+      "source": "games/last-watt/data/waves.map1.json",
+      "mapId": "map1_main_plant",
+      "wave": 10,
+      "reward": 50,
+      "spawnGroups": 4,
+      "enemyCount": 26,
+      "enemyCounts": {
+        "armored_truck": 2,
+        "demo_sapper": 4,
+        "scavenger_bug": 12,
+        "swift_rat": 8
+      },
+      "gates": ["gate_1", "gate_2"],
+      "lastSpawnSecond": 18
+    }
   },
   "runtime": {
     "node": null,
@@ -35,7 +51,7 @@
     "mockPolicyVerified": null,
     "productionRuntimeVerified": null,
     "referenceRenderFpsVerified": false,
-    "referenceRenderFpsStatus": "REQUIRES_UNITY_URP_REFERENCE_HARDWARE_CAPTURE"
+    "referenceRenderFpsStatus": "REQUIRES_WEBGL_REFERENCE_HARDWARE_CAPTURE"
   },
   "redlines": [],
   "peaks": {
@@ -67,8 +83,8 @@
     "protectedParticleDrops": null
   },
   "stressEvent": {
-    "id": "m3-firefields-grid-overload-collision",
-    "wave": 18,
+    "id": "wave-10-six-shatters-same-frame",
+    "wave": 10,
     "atSecond": null,
     "globalFrame": null,
     "requestedEffectStarts": {},

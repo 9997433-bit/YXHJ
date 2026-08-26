@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "id": "wave-10-surge-same-frame-shatter",
+  "name": "Wave 10 surge with same-frame ice shatters",
+  "description": "M1 pressure profile anchored to map 1 wave 10, with six complete ice-shatter events triggered in one frame.",
+  "fps": 60,
+  "canonicalWave": {
+    "source": "../../data/waves.map1.json",
+    "wave": 10,
+    "expectedSpawnGroups": 4,
+    "expectedEnemyCount": 26,
+    "sameFrameShatters": 6
+  },
+  "waves": [
+    {
+      "wave": 10,
+      "durationSeconds": 36,
+      "loopEffects": {
+        "ambient_dust": 4,
+        "geothermal_steam": 2,
+        "wet_drips": 6,
+        "condensation_mist": 8
+      },
+      "periodicBursts": [
+        { "effect": "hit_spark", "everySeconds": 0.12, "count": 3, "phaseSeconds": 0.03 },
+        { "effect": "freeze_bloom", "everySeconds": 1.2, "count": 3, "phaseSeconds": 0.3 },
+        { "effect": "shatter", "everySeconds": 1.8, "count": 2, "phaseSeconds": 0.9 },
+        { "effect": "coin_flow", "everySeconds": 0.8, "count": 2, "phaseSeconds": 0.4 },
+        { "effect": "demolition_explosion", "everySeconds": 5, "count": 1, "phaseSeconds": 3 }
+      ]
+    }
+  ],
+  "fixedStressEvent": {
+    "id": "wave-10-six-shatters-same-frame",
+    "wave": 10,
+    "atSecond": 18,
+    "loopEffects": [
+      { "effect": "condensation_mist", "count": 4, "durationSeconds": 2 }
+    ],
+    "burstEffects": [
+      { "effect": "freeze_bloom", "count": 6 },
+      { "effect": "shatter", "count": 6 },
+      { "effect": "hit_spark", "count": 8 },
+      { "effect": "demolition_explosion", "count": 2 }
+    ],
+    "assertSameFrame": [
+      { "effect": "shatter", "minCount": 6 },
+      { "effect": "freeze_bloom", "minCount": 6 }
+    ]
+  }
+}

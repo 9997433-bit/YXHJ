@@ -31,7 +31,8 @@ export const EFFECTS = Object.freeze({
     pointLights: 1,
     protectedParticles: true,
   }),
-  shatter: burstEffect("event", 24, 0.5, { protectedParticles: true }),
+  // Production ice shatter: 24 shards + core + ring + 14 frost motes.
+  shatter: burstEffect("event", 40, 0.9, { protectedParticles: true }),
   demolition_explosion: burstEffect("event", 16, 0.5, {
     pointLights: 1,
     protectedParticles: true,

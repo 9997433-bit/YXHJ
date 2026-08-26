@@ -20,9 +20,10 @@ export function runMockProbe({
   scenario,
   budgets = DEFAULT_BUDGETS,
   scenarioPath = null,
+  canonicalWaveProfile = null,
 }) {
   validateBudgets(budgets);
-  validateScenario(scenario);
+  validateScenario(scenario, canonicalWaveProfile);
 
   const timeline = buildTimeline(scenario);
   const frameTimesMs = [];
@@ -92,6 +93,8 @@ export function runMockProbe({
     policy,
     waves: [...waves.keys()],
     stressEvent,
+    canonicalWaveProfile,
+    canonicalWaveExpectation: scenario.canonicalWave,
   });
   const passed = redlines.every((redline) => redline.passed);
   const cpuTiming = summarizeTiming(frameTimesMs, totalProbeTimeMs, budgets);
@@ -112,6 +115,7 @@ export function runMockProbe({
       frameCount: timeline.frameCount,
       durationSeconds: round(timeline.frameCount / scenario.fps, 3),
       waves: timeline.waveSpans.map((span) => span.wave),
+      canonicalWaveProfile,
     },
     runtime: {
       node: process.version,
@@ -126,7 +130,7 @@ export function runMockProbe({
       status: passed ? "PASS" : "FAIL",
       budgetControllerVerified: passed,
       referenceRenderFpsVerified: false,
-      referenceRenderFpsStatus: "REQUIRES_UNITY_URP_REFERENCE_HARDWARE_CAPTURE",
+      referenceRenderFpsStatus: "REQUIRES_WEBGL_REFERENCE_HARDWARE_CAPTURE",
     },
     redlines,
     peaks: {
@@ -139,14 +143,14 @@ export function runMockProbe({
     waves: [...waves.values()],
     notes: [
       "The mock exercises allocation, priority, LOD, and light-fallback policy; it does not render GPU particles.",
-      "Node host CPU timing is diagnostic only and must not be used as proof of GTX 1060 or Steam Deck 60fps.",
+      "Node host CPU timing is diagnostic only and must not be used as proof of 4-core Iris Xe-class 1080p/60fps.",
       "Event and combo burst particles are protected; environment emitters are discarded first.",
       "Point-light requests above eight use additive billboard fallback.",
     ],
   };
 }
 
-function validateScenario(scenario) {
+function validateScenario(scenario, canonicalWaveProfile) {
   if (!scenario || typeof scenario !== "object") {
     throw new TypeError("Scenario must be a JSON object.");
   }
@@ -155,6 +159,21 @@ function validateScenario(scenario) {
   }
   if (!Array.isArray(scenario.waves) || scenario.waves.length === 0) {
     throw new TypeError("Scenario must define at least one wave.");
+  }
+  if (
+    !canonicalWaveProfile ||
+    canonicalWaveProfile.wave !== scenario.canonicalWave?.wave
+  ) {
+    throw new TypeError("Scenario must resolve its declared canonical wave.");
+  }
+  for (const field of [
+    "expectedSpawnGroups",
+    "expectedEnemyCount",
+    "sameFrameShatters",
+  ]) {
+    if (!Number.isInteger(scenario.canonicalWave[field]) || scenario.canonicalWave[field] <= 0) {
+      throw new TypeError(`Scenario canonicalWave.${field} must be a positive integer.`);
+    }
   }
 
   const seenWaves = new Set();
@@ -207,6 +226,14 @@ function validateScenario(scenario) {
     validateEffectCount(entry.effect, entry.count, "fixedStressEvent");
     if (EFFECTS[entry.effect].mode !== "burst") {
       throw new TypeError(`${entry.effect} is not a burst effect.`);
+    }
+  }
+  for (const entry of stress.assertSameFrame ?? []) {
+    const effectId = typeof entry === "string" ? entry : entry.effect;
+    const minCount = typeof entry === "string" ? 1 : entry.minCount;
+    validateEffectCount(effectId, minCount, "fixedStressEvent.assertSameFrame");
+    if (minCount <= 0) {
+      throw new TypeError(`${effectId} same-frame minimum must be positive.`);
     }
   }
 }
@@ -458,11 +485,23 @@ function buildStressEventReport(scenario, timeline, evaluation) {
       startCounts[source.effectId] = (startCounts[source.effectId] ?? 0) + 1;
     }
   }
-  const assertions = (stress.assertSameFrame ?? []).map((effectId) => ({
-    effect: effectId,
-    requestedAtStressFrame: startCounts[effectId] ?? 0,
-    passed: (startCounts[effectId] ?? 0) > 0,
-  }));
+  const assertions = (stress.assertSameFrame ?? []).map((entry) => {
+    const assertion =
+      typeof entry === "string"
+        ? { effect: entry, minCount: 1 }
+        : { effect: entry.effect, minCount: entry.minCount };
+    const requestedAtStressFrame = startCounts[assertion.effect] ?? 0;
+    const acceptedAtStressFrame =
+      evaluation?.acceptedEffectCounts[assertion.effect] ?? 0;
+    return {
+      ...assertion,
+      requestedAtStressFrame,
+      acceptedAtStressFrame,
+      passed:
+        requestedAtStressFrame >= assertion.minCount &&
+        acceptedAtStressFrame >= assertion.minCount,
+    };
+  });
 
   return {
     id: stress.id,
@@ -481,9 +520,7 @@ function buildStressEventReport(scenario, timeline, evaluation) {
     sameFrameAssertions: assertions,
     passed:
       Boolean(evaluation) &&
-      assertions.every((assertion) => assertion.passed) &&
-      (evaluation?.acceptedEffectCounts.fire_field ?? 0) >= 3 &&
-      (evaluation?.acceptedEffectCounts.ultimate_ring ?? 0) >= 1,
+      assertions.every((assertion) => assertion.passed),
   };
 }
 
@@ -493,6 +530,8 @@ function evaluateRedlines({
   policy,
   waves,
   stressEvent,
+  canonicalWaveProfile,
+  canonicalWaveExpectation,
 }) {
   const checks = [
     budgetCheck(
@@ -532,17 +571,52 @@ function evaluateRedlines({
       "eq",
     ),
     {
-      id: "wave_coverage_exactly_16_through_19",
-      passed: JSON.stringify(waves) === JSON.stringify([16, 17, 18, 19]),
+      id: "wave_coverage_exactly_10",
+      passed: JSON.stringify(waves) === JSON.stringify([10]),
       actual: waves,
-      expected: [16, 17, 18, 19],
+      expected: [10],
       comparator: "deepEqual",
     },
     {
-      id: "three_fire_fields_and_ultimate_share_stress_frame",
-      passed: stressEvent.passed,
-      actual: stressEvent.acceptedActiveEffects,
-      expected: { fire_field: ">=3", ultimate_ring: ">=1" },
+      id: "canonical_wave_10_profile_matches_data",
+      passed:
+        canonicalWaveProfile?.wave === 10 &&
+        canonicalWaveProfile.spawnGroups ===
+          canonicalWaveExpectation.expectedSpawnGroups &&
+        canonicalWaveProfile.enemyCount ===
+          canonicalWaveExpectation.expectedEnemyCount,
+      actual: {
+        wave: canonicalWaveProfile?.wave,
+        spawnGroups: canonicalWaveProfile?.spawnGroups,
+        enemyCount: canonicalWaveProfile?.enemyCount,
+      },
+      expected: {
+        wave: 10,
+        spawnGroups: canonicalWaveExpectation.expectedSpawnGroups,
+        enemyCount: canonicalWaveExpectation.expectedEnemyCount,
+      },
+      comparator: "deepEqual",
+    },
+    {
+      id: "multiple_ice_shatters_share_stress_frame",
+      passed:
+        stressEvent.passed &&
+        stressEvent.sameFrameAssertions.some(
+          (assertion) =>
+            assertion.effect === "shatter" &&
+            assertion.requestedAtStressFrame >=
+              canonicalWaveExpectation.sameFrameShatters &&
+            assertion.acceptedAtStressFrame >=
+              canonicalWaveExpectation.sameFrameShatters,
+        ),
+      actual: stressEvent.sameFrameAssertions.find(
+        (assertion) => assertion.effect === "shatter",
+      ),
+      expected: {
+        effect: "shatter",
+        requestedAtStressFrame: `>=${canonicalWaveExpectation.sameFrameShatters}`,
+        acceptedAtStressFrame: `>=${canonicalWaveExpectation.sameFrameShatters}`,
+      },
       comparator: "contains",
     },
   ];

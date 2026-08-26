@@ -13,7 +13,7 @@ const benchDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultScenarioPath = path.join(
   benchDirectory,
   "scenarios",
-  "waves-16-19.json",
+  "wave-10-shatter.json",
 );
 const templatePath = path.join(
   benchDirectory,
@@ -32,6 +32,10 @@ try {
   } else {
     const scenarioText = await readFile(options.scenarioPath, "utf8");
     const scenario = JSON.parse(scenarioText);
+    const canonicalWaveProfile = await loadCanonicalWaveProfile(
+      scenario,
+      options.scenarioPath,
+    );
     const budgets = {
       ...DEFAULT_BUDGETS,
       ...options.budgetOverrides,
@@ -44,6 +48,7 @@ try {
       scenario,
       budgets,
       scenarioPath: path.relative(process.cwd(), options.scenarioPath),
+      canonicalWaveProfile,
     });
     const productionRuntime = await runProductionRuntimeProbe();
     attachProductionRuntime(report, productionRuntime);
@@ -72,8 +77,8 @@ function attachProductionRuntime(report, productionRuntime) {
   const mockPolicyVerified = report.result.budgetControllerVerified;
   const productionRuntimeVerified = productionRuntime.status === "PASS";
 
-  report.schemaVersion = 2;
-  report.benchmark.version = "2.0.0";
+  report.schemaVersion = 3;
+  report.benchmark.version = "3.0.0";
   report.benchmark.kind = "production-runtime-counters-with-deterministic-demand-model";
   report.result.mockPolicyVerified = mockPolicyVerified;
   report.result.productionRuntimeVerified = productionRuntimeVerified;
@@ -85,12 +90,66 @@ function attachProductionRuntime(report, productionRuntime) {
   report.productionRuntime = productionRuntime;
   report.notes = [
     "Production runtime checks load VfxBudget and GpuParticleSystem from src/vfx and read their real snapshot, estimated-alive, and exact-alive counters.",
-    "The waves 16–19 demand forecast remains deterministic; its allocation policy is retained as a model baseline and is not presented as rendered GPU output.",
+    "The wave 10 surge forecast is anchored to data/waves.map1.json; its allocation policy is a deterministic demand baseline, not rendered GPU output.",
+    "The production probe warms eight real condense-mist loops, then triggers six real ice-shatter effects in one frame and records particles, emitters, decals, and hitstop throttling.",
     "The production particle probe writes real Three.js buffer attributes headlessly but does not create a WebGL context or verify reference-hardware frame rate.",
-    "Node host CPU timing is diagnostic only and must not be used as proof of GTX 1060 or Steam Deck 60fps.",
+    "Node host CPU timing is diagnostic only and must not be used as proof of 4-core Iris Xe-class 1080p/60fps.",
     "Event and combo burst particles are protected; environment emitters are discarded first.",
     "Point-light requests above eight use additive billboard fallback in the demand model.",
   ];
+}
+
+async function loadCanonicalWaveProfile(scenario, scenarioPath) {
+  const canonical = scenario.canonicalWave;
+  if (!canonical || typeof canonical.source !== "string") {
+    throw new TypeError("Scenario must declare canonicalWave.source.");
+  }
+  if (!Number.isInteger(canonical.wave)) {
+    throw new TypeError("Scenario canonicalWave.wave must be an integer.");
+  }
+
+  const sourcePath = path.resolve(path.dirname(scenarioPath), canonical.source);
+  const waveTable = JSON.parse(await readFile(sourcePath, "utf8"));
+  const wave = waveTable.waves?.find(
+    (candidate) => candidate.wave_no === canonical.wave,
+  );
+  if (!wave) {
+    throw new RangeError(
+      `Wave ${canonical.wave} is missing from ${path.relative(process.cwd(), sourcePath)}.`,
+    );
+  }
+
+  const enemyCounts = {};
+  const gates = new Set();
+  let lastSpawnSecond = 0;
+  for (const spawn of wave.spawns ?? []) {
+    enemyCounts[spawn.enemy_id] =
+      (enemyCounts[spawn.enemy_id] ?? 0) + spawn.count;
+    gates.add(spawn.gate_id);
+    lastSpawnSecond = Math.max(
+      lastSpawnSecond,
+      spawn.start_delay_s + Math.max(0, spawn.count - 1) * spawn.interval_s,
+    );
+  }
+
+  return {
+    source: path.relative(process.cwd(), sourcePath),
+    mapId: waveTable.map_id,
+    wave: wave.wave_no,
+    reward: wave.reward,
+    spawnGroups: wave.spawns?.length ?? 0,
+    enemyCount: Object.values(enemyCounts).reduce(
+      (total, count) => total + count,
+      0,
+    ),
+    enemyCounts: Object.fromEntries(
+      Object.entries(enemyCounts).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ),
+    gates: [...gates].sort(),
+    lastSpawnSecond: Number(lastSpawnSecond.toFixed(3)),
+  };
 }
 
 function parseArguments(argumentsList) {
@@ -156,7 +215,7 @@ Usage:
   node games/last-watt/bench/run.mjs [options]
 
 Options:
-  --scenario <path>         Scenario JSON (default: waves 16–19 demand model)
+  --scenario <path>         Scenario JSON (default: wave 10 + same-frame shatter)
   --out <path>              Write the JSON report instead of stdout
   --compact                 Emit compact JSON
   --template                Print the blank JSON report template

@@ -14,10 +14,9 @@ const gameDirectory = path.resolve(
  * Loads the production TypeScript modules through Vite's SSR transformer, then
  * exercises the real governor and particle pool without a WebGL context.
  *
- * The waves 16–19 probe remains a deterministic demand model. This companion
- * probe prevents that model from silently drifting away from the production
- * constants and, importantly, verifies that the report can read the same
- * counters used by VfxSystem at runtime.
+ * The wave 10 probe remains a deterministic demand model. This companion probe
+ * prevents that model from silently drifting away from production constants
+ * and profiles real same-frame ice shatters through VfxSystem.
  */
 export async function runProductionRuntimeProbe() {
   const server = await createServer({
@@ -41,6 +40,7 @@ function exerciseProductionRuntime({
   VFX_BUDGET,
   VfxBudget,
   VfxPriority,
+  VfxSystem,
 }) {
   const productionBudgets = {
     activeEmitters: VFX_BUDGET.maxEmitters,
@@ -171,63 +171,61 @@ function exerciseProductionRuntime({
     }
     particles.update(2);
 
-    // VISUAL_BIBLE §15.3 estimates 2,340 live particles for the representative
-    // late-wave collision. Emit that exact load into the production ring pool
-    // and compare the O(1) runtime estimate with the exact O(capacity) scan.
-    beginFrame(governor, particles);
-    const representativeRequested = 2_340;
-    const representativeGranted = governor.allow(
-      VfxPriority.Event,
-      representativeRequested,
-    );
-    const representativeEmitted = particles.emit(
-      particleRequest(
-        representativeRequested,
-        0.5,
-        ParticleTile.Spike,
-        "additive",
-      ),
-      representativeGranted,
-    );
-    const representativeSnapshot = governor.snapshot;
-    const representativeExactParticles = particles.countAliveExact();
-    observations.representativeLateWaveLoad = {
-      requestedParticles: representativeRequested,
-      grantedParticles: representativeGranted,
-      emittedParticles: representativeEmitted,
-      runtimeEstimatedAliveParticles: representativeSnapshot.aliveParticles,
-      exactAliveParticles: representativeExactParticles,
-      capacity: particles.totalCapacity,
-      particleStats: particles.stats,
-      violations: governor.violations(),
-    };
+    // Profile the M1 acceptance collision through the real VfxSystem: eight
+    // cold-mist loops are warmed, then six complete ice shatters fire in one
+    // frame. Each shatter currently emits 40 particles across four requests
+    // (24 shards + core + ring + 14 frost), plus one frost decal.
+    const shatterProfile = exerciseSameFrameShatters(VfxSystem);
+    observations.wave10SameFrameShatters = shatterProfile;
     addCheck(
       checks,
-      "production_representative_load_uses_real_particle_count",
+      "production_wave10_shatter_profile_uses_real_vfx_counters",
       {
-        estimated: representativeSnapshot.aliveParticles,
-        exact: representativeExactParticles,
-        emitted: representativeEmitted,
+        loopEmitters: shatterProfile.snapshot.loopEmitters,
+        oneShotEmitters: shatterProfile.snapshot.oneShotEmitters,
+        emittedParticles: shatterProfile.shatterParticlesEmitted,
+        exactParticleDelta: shatterProfile.exactParticleDelta,
+        decals: shatterProfile.decals,
       },
       {
-        estimated: representativeRequested,
-        exact: representativeRequested,
-        emitted: representativeRequested,
+        loopEmitters: 8,
+        oneShotEmitters: 24,
+        emittedParticles: 240,
+        exactParticleDelta: 240,
+        decals: 6,
       },
-      representativeSnapshot.aliveParticles === representativeRequested &&
-        representativeExactParticles === representativeRequested &&
-        representativeEmitted === representativeRequested,
+      shatterProfile.snapshot.loopEmitters === 8 &&
+        shatterProfile.snapshot.oneShotEmitters === 24 &&
+        shatterProfile.shatterParticlesEmitted === 240 &&
+        shatterProfile.exactParticleDelta === 240 &&
+        shatterProfile.decals === 6,
     );
     addCheck(
       checks,
-      "production_representative_load_lte_particle_budget",
-      representativeExactParticles,
-      VFX_BUDGET.maxParticles,
-      representativeExactParticles <= VFX_BUDGET.maxParticles,
-      "lte",
+      "production_same_frame_shatter_particles_are_not_dropped",
+      {
+        droppedParticles: shatterProfile.droppedParticles,
+        droppedRequests: shatterProfile.snapshot.droppedRequests,
+      },
+      { droppedParticles: 0, droppedRequests: 0 },
+      shatterProfile.droppedParticles === 0 &&
+        shatterProfile.snapshot.droppedRequests === 0,
     );
-
-    particles.update(1);
+    addCheck(
+      checks,
+      "production_same_frame_shatter_hitstop_is_throttled",
+      shatterProfile.impact,
+      { hitstopsAccepted: 1, hitstopsRejected: 5, shakesMerged: 0 },
+      shatterProfile.impact.hitstopsAccepted === 1 &&
+        shatterProfile.impact.hitstopsRejected === 5,
+    );
+    addCheck(
+      checks,
+      "production_wave10_shatter_profile_has_no_budget_violation",
+      shatterProfile.violations,
+      [],
+      shatterProfile.violations.length === 0,
+    );
     const expiredEstimate = particles.stats.alive;
     const expiredExact = particles.countAliveExact();
     addCheck(
@@ -343,6 +341,69 @@ function exerciseProductionRuntime({
     renderedFrames: false,
     authoritativeForRenderFps: false,
   };
+}
+
+function exerciseSameFrameShatters(VfxSystem) {
+  const vfx = new VfxSystem({
+    additiveCapacity: 14_000,
+    alphaCapacity: 6_000,
+    seed: 0x52334732,
+  });
+  vfx.budget.autoDegrade = false;
+  const mistHandles = [];
+
+  try {
+    for (let index = 0; index < 8; index += 1) {
+      mistHandles.push(
+        vfx.play("condense-mist", {
+          position: { x: index, y: 0.55, z: 3 },
+          direction: { x: 0, y: 0, z: 1 },
+          range: 3.2,
+        }),
+      );
+    }
+    for (let frame = 0; frame < 60; frame += 1) {
+      vfx.beginFrame(1000 / 60);
+      vfx.endFrame();
+    }
+
+    const exactBeforeStress = vfx.particles.countAliveExact();
+    const estimatedBeforeStress = vfx.particles.stats.alive;
+    vfx.beginFrame(1000 / 60);
+    for (let index = 0; index < 6; index += 1) {
+      vfx.play("ice-shatter", {
+        position: { x: 3 + index * 0.4, y: 0.45, z: 6 },
+        splashRadius: 1,
+      });
+    }
+    const snapshot = vfx.budget.snapshot;
+    const particleStats = vfx.particles.stats;
+    const exactAfterStress = vfx.particles.countAliveExact();
+    const profile = {
+      persistentLoad: {
+        condenseMistLoops: 8,
+        warmupFrames: 60,
+        estimatedParticlesBeforeStress: estimatedBeforeStress,
+        exactParticlesBeforeStress: exactBeforeStress,
+      },
+      sameFrameShatters: 6,
+      expectedParticlesPerShatter: 40,
+      shatterParticlesEmitted: particleStats.emittedThisFrame,
+      droppedParticles: particleStats.droppedThisFrame,
+      exactParticleDelta: exactAfterStress - exactBeforeStress,
+      estimatedParticlesAfterStress: particleStats.alive,
+      exactParticlesAfterStress: exactAfterStress,
+      snapshot,
+      decals: vfx.decals.count,
+      impact: vfx.impact.diagnostics,
+      violations: vfx.budget.violations(),
+    };
+    vfx.endFrame();
+    return profile;
+  } finally {
+    for (const handle of mistHandles) handle?.stop();
+    vfx.dispose();
+  }
 }
 
 function beginFrame(governor, particles) {
