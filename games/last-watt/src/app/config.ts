@@ -1,88 +1,60 @@
 /**
- * M1 vertical-slice constants.
+ * M1 vertical-slice presentation constants.
  *
- * Everything here is presentation or slice scope — the balance numbers stay in
- * `data/*.json` and `src/combat/data`. When a value duplicates something the
- * design owns, the source is cited so the copy can be deleted later rather than
- * becoming a second source of truth.
+ * Ids are canonical (`data/*.json`, INTEGRATION.md §3). Nothing here is a
+ * balance number — costs, ranges and unlock waves come from the content tables
+ * through `GameSession.snapshot()`; this file only decides what a thing looks
+ * like and which of the eight blueprints the slice puts on the bar.
  */
 
-import type { ComboId, IconName } from '../ui';
+import { ENEMY_IDS, TOWER_IDS } from '../combat';
+import type { IconName } from '../ui';
 import type { TerrainName } from '../gameplay';
 
-/** `data/game_state.defaults.json` → `defaults` / `limits` / `rules`. */
-export const ECONOMY_DEFAULTS = {
-  gold: 220,
-  powerCap: 8,
-  battery: 0,
-  batteryMax: 100,
-  integrity: 100,
-  integrityMax: 100,
-  /** rules.battery.charge_per_idle_power_per_s */
-  batteryChargePerIdlePower: 0.25,
-  /** rules.battery.overload_battery_cost */
-  overloadCost: 20,
-  /** rules.economy.early_wave_bonus_ratio */
-  earlyBonusPercent: 10,
-} as const;
-
 export interface BuildEntry {
-  /** Canonical tower id — `src/combat/data/towers.ts`. */
   defId: string;
   icon: IconName;
   hotkey: string;
 }
 
 /**
- * The M1 build menu (GDD §19 M1: four towers plus the generator).
+ * The M1 build bar (GDD §19 M1: four towers plus the generator).
  *
- * Slice deviation, deliberate: `data/waves.map1.json.unlock_schedule` gates the
- * condenser and the hammer behind wave 3, which is correct for the tutorial but
- * makes the shatter chain unreachable in a two-minute playtest. Everything here
- * is unlocked from the deploy phase until the tutorial track (M2) lands and can
- * drive `unlocked` from the schedule again.
+ * Order is the hotkey order. The remaining three blueprints exist in the
+ * content tables but are M2 content, so they are not listed rather than listed
+ * and greyed out — a locked row the player can never reach this milestone is
+ * noise.
  */
 export const M1_BUILD_MENU: readonly BuildEntry[] = [
-  { defId: 'rivet_mg', icon: 'tower-rivet', hotkey: '1' },
-  { defId: 'tar_sprayer', icon: 'tower-tar', hotkey: '2' },
-  { defId: 'condenser', icon: 'tower-condenser', hotkey: '3' },
-  { defId: 'hydraulic_hammer', icon: 'tower-hammer', hotkey: '4' },
-  { defId: 'generator', icon: 'building-generator', hotkey: '5' },
+  { defId: TOWER_IDS.rivetMg, icon: 'tower-rivet', hotkey: '1' },
+  { defId: TOWER_IDS.tarSprayer, icon: 'tower-tar', hotkey: '2' },
+  { defId: TOWER_IDS.condenserJet, icon: 'tower-condenser', hotkey: '3' },
+  { defId: TOWER_IDS.hydraulicBreaker, icon: 'tower-hammer', hotkey: '4' },
+  { defId: TOWER_IDS.generator, icon: 'building-generator', hotkey: '5' },
 ];
 
-/** Enemy def id → next-wave preview icon (`src/ui/icons.ts`). */
-export const ENEMY_ICONS: Readonly<Record<string, IconName>> = {
-  scavenger_bug: 'enemy-bug',
-  scurry_rats: 'enemy-rat',
-  armored_hauler: 'enemy-hauler',
-  scout_bee: 'enemy-bee',
-  sapper_crab: 'enemy-sapper',
-  repair_drone: 'enemy-medic',
-  repair_mothership: 'enemy-boss',
-  leviathan: 'enemy-boss',
-};
+/** Tower def id → HUD icon (`src/ui/icons.ts`). */
+export const TOWER_ICONS: Readonly<Record<string, IconName>> = Object.fromEntries(
+  M1_BUILD_MENU.map((entry) => [entry.defId, entry.icon]),
+);
 
-/**
- * `combat.ComboId` → `ui.ComboId`.
- *
- * The two modules named the same four combos differently (`shatter` vs
- * `ice-shatter`, `oil_fire` vs `oil-fire`). Neither is wrong on its own and
- * neither should import the other, so the join lives here. Delete this table
- * once the shared id registry lands and both sides read it.
- */
-export const COMBO_TIP_IDS: Readonly<Record<string, ComboId>> = {
-  shatter: 'ice-shatter',
-  ice_shatter: 'ice-shatter',
-  oil_fire: 'oil-fire',
-  conduct: 'conduct',
-  overload: 'overload',
+/** Enemy def id → next-wave preview icon. */
+export const ENEMY_ICONS: Readonly<Record<string, IconName>> = {
+  [ENEMY_IDS.scavengerBug]: 'enemy-bug',
+  [ENEMY_IDS.swiftRat]: 'enemy-rat',
+  [ENEMY_IDS.armoredTruck]: 'enemy-hauler',
+  [ENEMY_IDS.scoutWasp]: 'enemy-bee',
+  [ENEMY_IDS.demoSapper]: 'enemy-sapper',
+  [ENEMY_IDS.repairDrone]: 'enemy-medic',
+  [ENEMY_IDS.repairMothership]: 'enemy-boss',
+  [ENEMY_IDS.leviathan]: 'enemy-boss',
 };
 
 export interface TerrainStyle {
   /** Top surface height in world units; negative sinks the cell. */
   height: number;
   color: number;
-  /** Non-zero makes the cell a bloom source — reserved for core and gates. */
+  /** Non-zero makes the cell a bloom source — reserved for the core and gates. */
   emissive?: number;
   emissiveIntensity?: number;
 }
@@ -116,14 +88,14 @@ export interface EnemyStyle {
 }
 
 export const ENEMY_STYLES: Readonly<Record<string, EnemyStyle>> = {
-  scavenger_bug: { color: 0x6d7a4a, emissive: 0x2b3a12, size: 0.3, hover: 0, shape: 'bug' },
-  scurry_rats: { color: 0x8a6a4b, emissive: 0x3a2410, size: 0.24, hover: 0, shape: 'rat' },
-  armored_hauler: { color: 0x5b6068, emissive: 0x141a22, size: 0.46, hover: 0, shape: 'hauler' },
-  scout_bee: { color: 0xc7a23a, emissive: 0x6b4c00, size: 0.28, hover: 0.95, shape: 'bee' },
-  sapper_crab: { color: 0x8c4535, emissive: 0x5a1408, size: 0.4, hover: 0, shape: 'crab' },
-  repair_drone: { color: 0x4f8a72, emissive: 0x0d4a34, size: 0.3, hover: 0.55, shape: 'drone' },
-  repair_mothership: { color: 0x4f8a72, emissive: 0x0d4a34, size: 0.7, hover: 0.3, shape: 'boss' },
-  leviathan: { color: 0x4a4038, emissive: 0x2a0c06, size: 1.0, hover: 0, shape: 'boss' },
+  [ENEMY_IDS.scavengerBug]: { color: 0x6d7a4a, emissive: 0x2b3a12, size: 0.3, hover: 0, shape: 'bug' },
+  [ENEMY_IDS.swiftRat]: { color: 0x8a6a4b, emissive: 0x3a2410, size: 0.24, hover: 0, shape: 'rat' },
+  [ENEMY_IDS.armoredTruck]: { color: 0x5b6068, emissive: 0x141a22, size: 0.46, hover: 0, shape: 'hauler' },
+  [ENEMY_IDS.scoutWasp]: { color: 0xc7a23a, emissive: 0x6b4c00, size: 0.28, hover: 0.95, shape: 'bee' },
+  [ENEMY_IDS.demoSapper]: { color: 0x8c4535, emissive: 0x5a1408, size: 0.4, hover: 0, shape: 'crab' },
+  [ENEMY_IDS.repairDrone]: { color: 0x4f8a72, emissive: 0x0d4a34, size: 0.3, hover: 0.55, shape: 'drone' },
+  [ENEMY_IDS.repairMothership]: { color: 0x4f8a72, emissive: 0x0d4a34, size: 0.7, hover: 0.3, shape: 'boss' },
+  [ENEMY_IDS.leviathan]: { color: 0x4a4038, emissive: 0x2a0c06, size: 1.0, hover: 0, shape: 'boss' },
 };
 
 export const DEFAULT_ENEMY_STYLE: EnemyStyle = {

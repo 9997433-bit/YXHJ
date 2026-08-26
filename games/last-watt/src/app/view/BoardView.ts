@@ -54,6 +54,7 @@ export class BoardView {
   private readonly emissiveCells: InstancedMesh;
   private readonly cursor: Mesh;
   private readonly rangeRing: Mesh;
+  private readonly highlights: InstancedMesh;
   private readonly routes: Line[] = [];
   private readonly routeGroup = new Group();
   private readonly scratch = new Object3D();
@@ -62,6 +63,7 @@ export class BoardView {
 
   private terrainVersion = -1;
   private gateSignature = '';
+  private highlightSignature = '';
   private cursorPulse = 0;
 
   constructor(private readonly grid: Grid) {
@@ -126,8 +128,53 @@ export class BoardView {
     this.rangeRing.visible = false;
     this.rangeRing.renderOrder = 5;
 
+    // Legality is not guessable from the terrain alone — three of 240 cells are
+    // diggable and the rule involves pathing — so the armed tool paints its
+    // legal targets rather than letting the player hunt for them.
+    this.highlights = new InstancedMesh(
+      new PlaneGeometry(0.86, 0.86).rotateX(-Math.PI / 2),
+      new MeshBasicMaterial({
+        color: APP_PALETTE.coin,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      }),
+      grid.cols * grid.rows,
+    );
+    this.highlights.name = 'lw-highlights';
+    this.highlights.count = 0;
+    this.highlights.renderOrder = 3;
+
     this.routeGroup.name = 'lw-routes';
-    this.root.add(this.cells, this.emissiveCells, this.routeGroup, this.cursor, this.rangeRing);
+    this.root.add(
+      this.cells,
+      this.emissiveCells,
+      this.routeGroup,
+      this.highlights,
+      this.cursor,
+      this.rangeRing,
+    );
+  }
+
+  /** Cells the armed tool may legally be used on. */
+  setHighlights(cells: readonly { cx: number; cy: number }[]): void {
+    const signature = cells.map((cell) => `${cell.cx},${cell.cy}`).join('|');
+    if (signature === this.highlightSignature) return;
+    this.highlightSignature = signature;
+
+    let index = 0;
+    for (const cell of cells) {
+      const style = TERRAIN_STYLES[this.grid.terrainAt(cell.cx, cell.cy) as TerrainName];
+      this.scratch.position.set(cell.cx + 0.5, style.height + 0.02, cell.cy + 0.5);
+      this.scratch.scale.set(1, 1, 1);
+      this.scratch.rotation.set(0, 0, 0);
+      this.scratch.updateMatrix();
+      this.highlights.setMatrixAt(index, this.scratch.matrix);
+      index += 1;
+    }
+    this.highlights.count = index;
+    this.highlights.instanceMatrix.needsUpdate = true;
   }
 
   /** Rebuilds the relief when the grid's walkability version moves. */
@@ -272,6 +319,11 @@ export class BoardView {
     material.opacity = 0.22 + Math.sin(this.cursorPulse * 6) * 0.1;
   }
 
+  /** Top of the terrain slab, i.e. where a tower's feet go. */
+  surfaceHeight(cx: number, cy: number): number {
+    return TERRAIN_STYLES[this.grid.terrainAt(cx, cy) as TerrainName].height;
+  }
+
   worldOf(cx: number, cy: number, out = new Vector3()): Vector3 {
     const style = TERRAIN_STYLES[this.grid.terrainAt(cx, cy) as TerrainName];
     return out.set(cx + 0.5, style.height, cy + 0.5);
@@ -295,6 +347,8 @@ export class BoardView {
     (this.cursor.material as MeshBasicMaterial).dispose();
     this.rangeRing.geometry.dispose();
     (this.rangeRing.material as MeshBasicMaterial).dispose();
+    this.highlights.geometry.dispose();
+    (this.highlights.material as MeshBasicMaterial).dispose();
     for (const line of this.routes) {
       line.geometry.dispose();
       (line.material as LineBasicMaterial).dispose();
