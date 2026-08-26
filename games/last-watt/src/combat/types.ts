@@ -28,6 +28,11 @@ export interface CellCoord {
 // Damage
 // ---------------------------------------------------------------------------
 
+/**
+ * `true` damage bypasses armour *and* every damage-taken multiplier. It exists
+ * for self-inflicted and scripted damage (the Leviathan's P3 burn) that must
+ * land as a flat number regardless of the target's state.
+ */
 export type DamageType = 'physical' | 'fire' | 'cold' | 'lightning' | 'true';
 
 /**
@@ -137,12 +142,6 @@ export function distance(a: Vec2, b: Vec2): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.sqrt(dx * dx + dy * dy);
-}
-
-export function distanceSq(a: Vec2, b: Vec2): number {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return dx * dx + dy * dy;
 }
 
 export function toCell(p: Vec2): CellCoord {

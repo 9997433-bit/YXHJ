@@ -62,14 +62,17 @@ export class StatusSet {
     private immunities: ReadonlySet<StatusId> = new Set(),
   ) {}
 
-  setImmunities(immunities: ReadonlySet<StatusId>): void {
+  /**
+   * Replaces the immunity set (a boss phase change) and strips anything the
+   * host has just become immune to. Returns those removals so the caller can
+   * emit events — the Leviathan sprinting out of a freeze must drop its ice
+   * shell visually too.
+   */
+  setImmunities(immunities: ReadonlySet<StatusId>): StatusRemoval[] {
     this.immunities = immunities;
-    for (const id of immunities) {
-      if (this.instances.has(id)) {
-        this.instances.delete(id);
-        this.dirty = true;
-      }
-    }
+    const removed: StatusRemoval[] = [];
+    for (const id of immunities) this.removeInternal(id, 'cleansed', removed);
+    return removed;
   }
 
   has(id: StatusId): boolean {

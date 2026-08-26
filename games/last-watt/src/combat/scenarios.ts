@@ -9,7 +9,7 @@
  */
 
 import { CombatSystem } from './combatSystem';
-import { Enemy } from './entities/enemy';
+import type { Enemy } from './entities/enemy';
 import type { Tower } from './entities/tower';
 import { OpenFieldTerrain } from './ports';
 

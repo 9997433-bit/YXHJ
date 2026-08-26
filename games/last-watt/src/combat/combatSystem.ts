@@ -11,9 +11,22 @@
  * ports in `ports.ts`; presentation leaves through the event bus.
  */
 
-import { CombatStats, resolveArmor, towerDefIdOf, towerIdOf, type DamageRequest, type DamageResult } from './damage';
+import {
+  CombatStats,
+  NO_DAMAGE,
+  resolveArmor,
+  towerDefIdOf,
+  towerIdOf,
+  type DamageRequest,
+  type DamageResult,
+} from './damage';
 import { ContentRegistry, type CombatContent } from './data';
-import { MAX_CHAIN_JUMPS, MAX_REACTION_DEPTH, SELL_REFUND_FRACTION } from './data/tuning';
+import {
+  MAX_CHAIN_JUMPS,
+  MAX_REACTION_DEPTH,
+  SELL_REFUND_FRACTION,
+  ULTIMATE_OVERLOAD_DURATION,
+} from './data/tuning';
 import { Enemy, type EnemySpawnOptions } from './entities/enemy';
 import type { DeathSpawn } from './entities/enemyDef';
 import type { Projectile } from './entities/projectile';
@@ -306,7 +319,9 @@ export class CombatSystem implements ReactionRuntime {
 
     enemy.phaseIndex = next;
     const phase = phases[next] as (typeof phases)[number];
-    enemy.statuses.setImmunities(new Set(phase.statusImmunities ?? enemy.def.statusImmunities ?? []));
+    for (const removal of enemy.statuses.setImmunities(enemy.immunities())) {
+      this.onStatusRemoved(enemy, removal);
+    }
     this.bus.emit('enemy_phase_changed', {
       enemyId: enemy.id,
       defId: enemy.defId,
@@ -692,7 +707,9 @@ export class CombatSystem implements ReactionRuntime {
           tags: [...attack.tags, 'splash'],
           source: this.sourceOf(tower),
           ignoreArmor: attack.ignoreArmor ?? false,
-          depth: MAX_REACTION_DEPTH + 1,
+          // A shockwave is still a single 45-damage hit, so it may shatter a
+          // frozen neighbour; that shatter's own splash cannot cascade further.
+          depth: MAX_REACTION_DEPTH,
         });
       }
     }
@@ -799,7 +816,7 @@ export class CombatSystem implements ReactionRuntime {
               tags: [...projectile.tags, 'splash'],
               source: projectile.source,
               ignoreArmor: projectile.ignoreArmor,
-              depth: MAX_REACTION_DEPTH + 1,
+              depth: MAX_REACTION_DEPTH,
             });
           }
         }
@@ -819,7 +836,7 @@ export class CombatSystem implements ReactionRuntime {
 
   applyDamage(request: DamageRequest): DamageResult {
     const enemy = request.target;
-    if (!enemy.alive) return { applied: 0, absorbed: 0, killed: false, reactions: [] };
+    if (!enemy.alive) return NO_DAMAGE;
 
     const depth = request.depth ?? 0;
     const hit: MutableHit = {
@@ -850,9 +867,16 @@ export class CombatSystem implements ReactionRuntime {
       pendingSplash = ctx.pendingSplash;
     }
 
-    const armor = hit.ignoreArmor ? 0 : enemy.effectiveArmor;
-    const { applied: afterArmor, absorbed } = resolveArmor(hit.amount, armor, hit.ignoreArmor);
-    const applied = Math.max(0, afterArmor * enemy.damageTakenMul);
+    // `true` damage is exactly what it says: no armour, no multipliers. The
+    // Leviathan's P3 self-burn must be a flat 30/s no matter what state it is in.
+    const unmodified = hit.damageType === 'true';
+    const ignoreArmor = unmodified || hit.ignoreArmor;
+    const { applied: afterArmor, absorbed } = resolveArmor(
+      hit.amount,
+      ignoreArmor ? 0 : enemy.effectiveArmor,
+      ignoreArmor,
+    );
+    const applied = Math.max(0, unmodified ? afterArmor : afterArmor * enemy.damageTakenMul);
 
     enemy.hp -= applied;
     this.stats.recordDamage(applied, hit.combo, towerDefIdOf(request.source));
@@ -1170,7 +1194,7 @@ export class CombatSystem implements ReactionRuntime {
     this.bus.emit('ability_master_overload', {
       towersAffected: this.towerList().filter((t) => t.state === 'overloaded').length,
       enemiesStunned: this.enemyList().filter((e) => e.statuses.has('stunned')).length,
-      duration: 6,
+      duration: ULTIMATE_OVERLOAD_DURATION,
     });
     return true;
   }

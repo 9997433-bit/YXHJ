@@ -1,0 +1,221 @@
+# `src/combat` — towers, enemies, statuses, reactions
+
+Owner: Round 1 `R1-O3`. Scope: everything under `src/combat/**`, nothing outside it.
+
+Implements GDD §7 (towers and the four combos), §8 (enemies and both bosses) and
+the combat half of §9 (the master-overload ultimate). v1 scope: **no hero**.
+
+---
+
+## 1. The one rule this module exists to enforce
+
+> GDD §7.2: *"All combos go through one data-driven reaction table. Do not write
+> hard-coded branches."*
+
+So there is exactly one file that says what a combo is — [`data/reactions.ts`](data/reactions.ts) —
+and the code that runs it ([`reaction/engine.ts`](reaction/engine.ts)) contains no
+mention of ice, fire, lightning or overload. Grep the runtime for `frozen` and you
+will find the status table and nothing else.
+
+Adding a fifth combo is a new row. Adding a new *verb* means one entry in
+`reaction/conditions.ts` or `reaction/effects.ts` — those two registries are the
+only place reaction behaviour is coded.
+
+---
+
+## 2. Module boundary
+
+Combat imports **nothing** from sibling `src/` subtrees. The seams:
+
+| Direction | Mechanism | Who implements |
+|---|---|---|
+| Grid / terrain queries in | `TerrainQuery` port | `src/gameplay` (`OpenFieldTerrain` is the headless default) |
+| Movement in | `MovementDriver` port | `src/gameplay` flow field (`PolylineMovement` is the default) |
+| Battery in | `PowerSupply` port | `src/gameplay` economy (`InfiniteBattery` is the default) |
+| Everything out | `CombatEventBus` typed events | `src/vfx`, `src/ui`, `src/gameplay` |
+
+Cell *coatings* (oil slicks, fire fields) are owned by combat, not by the grid:
+combat is the only writer and the only reader. The renderer subscribes to
+`cell_coating_changed`.
+
+```ts
+import { CombatSystem } from '@/combat';
+
+const combat = new CombatSystem({ terrain, movement, power });
+combat.buildTower('hydraulic_hammer', { cx: 4, cy: 6 });
+combat.spawnEnemy('armored_hauler', { position, path });
+combat.update(dt);
+```
+
+Import from `src/combat/index.ts` only. Files inside the module are private.
+
+---
+
+## 3. Layout
+
+```
+types.ts          value types, grid helpers            (no deps)
+events.ts         typed event bus — the outbound seam
+ports.ts          inbound seams + headless defaults
+terrain.ts        cell coating field (oil / fire)
+damage.ts         damage request/result + balance telemetry
+targeting.ts      first / strongest / air, cones, chains
+combatSystem.ts   orchestrator; implements ReactionRuntime
+scenarios.ts      headless probes (see §7)
+
+status/           statusDef.ts  — defs, modifiers, registry
+                  statusSet.ts  — per-enemy container + exclusivity rules
+entities/         enemyDef.ts / enemy.ts
+                  towerDef.ts / tower.ts / projectile.ts
+reaction/         spec.ts       — the DSL (conditions, effects, rows)
+                  conditions.ts — one evaluator per condition kind
+                  effects.ts    — one executor per effect kind
+                  engine.ts     — priority walk + mutex
+                  context.ts    — what a row sees, what it may touch
+data/             tuning.ts     — every GDD number, in one place
+                  statuses.ts / towers.ts / upgrades.ts / enemies.ts
+                  reactions.ts  — THE reaction table
+                  index.ts      — ContentRegistry + cross-table validation
+```
+
+---
+
+## 4. The reaction table
+
+Twelve rows cover all four combos plus their support behaviour:
+
+| Row | Trigger | Fires when | Does |
+|---|---|---|---|
+| `chill_to_freeze` | status changed | 3 chill layers | freeze 2s |
+| `fire_thaws_frozen` | hit | frozen + `fire` tag | half damage, thaw |
+| `shatter` | hit | frozen + damage ≥ 40 | ×2.5, ignore armour, 1-cell splash |
+| `leviathan_plate_break` | hit | `armor_plated` + `shatter` tag | +1 armour-broken stack |
+| `oil_fire_ignite` | hit | oiled + `fire` tag | burning 8/s for 4s |
+| `oil_cell_ignites` | cell swept | `fire` tag over an oil cell | fire field 5s |
+| `fire_field_burns` | cell entered | cell is on fire | burning |
+| `oil_cell_coats` | cell entered | cell is oiled | oil coating + slow |
+| `puddle_wets` | cell entered | terrain is water | wet 6s |
+| `wet_conducts` | hit | wet + `lightning` tag | +2 jumps, no falloff |
+| `capacitor_overload` | activate | battery ≥ cost | 3×3 overload, then overheat |
+| `master_overload` | activate | — | global overload, no overheat, 1.5s EMP |
+
+Two mechanisms are worth knowing before you edit the table:
+
+**Mutex.** `fire_thaws_frozen` (priority 200) and `shatter` (priority 100) share
+the `frozen_consume` mutex, so a flamethrower hitting a frozen enemy thaws it and
+can never shatter it. That is the deliberate anti-combo of GDD §7.3.2, and it is
+expressed as two data fields rather than as an `if`.
+
+**`{ param, fallback }`.** Rows read numbers either literally or from the
+parameter bag the trigger carries. This is how a *tower upgrade* retunes a
+*combo* without the combo leaving the table:
+
+```ts
+// data/towers.ts — the condenser stamps the freeze length onto the chill it applies
+params: { freezeDuration: 2 }
+
+// data/reactions.ts — the row reads it
+{ kind: 'applyStatus', status: 'frozen', duration: { param: 'freezeDuration', fallback: 2 } }
+
+// data/upgrades.ts — "冻结 2.5s" overrides the parameter, not the row
+patch: { statusOverrides: [{ status: 'chilled', params: { freezeDuration: 2.5 } }] }
+```
+
+The same channel carries the flamethrower's fire-field duration, the tar slick's
+slow strength, and the capacitor's overload/overheat windows.
+
+**Recursion.** A shatter's splash may shatter one frozen neighbour and stops
+there (`maxDepth: 1`). Damage-over-time and splash never re-enter the table.
+
+---
+
+## 5. Status rules (GDD §7.2)
+
+Both anti-slop rules are data, expressed as `group` on the status def:
+
+- `group: 'coating'` — `wet` and `oil` evict each other, latest wins.
+- `group: 'reaction_state'` — `frozen` and `burning` evict and cancel each other.
+
+`frozen` additionally blocks `chilled` while active, and its `onEnd` hook grants
+`chill_immune` for 3s **however the freeze ended** — expiry, shatter, or thaw.
+Perma-freeze is therefore structurally impossible rather than prevented by a
+special case in the freeze code.
+
+---
+
+## 6. Events (for `src/vfx` and `src/ui`)
+
+Full map in [`events.ts`](events.ts). The ones the presentation layer wants:
+
+- `reaction_triggered` — carries the row's `ImpactSpec`: `vfx`, `sfx`, `hitstop`,
+  `flash`, `shake`, `tip`. Combat only *declares* screen impact; the §15.2
+  throttling rules ("at most one hitstop per 100ms") belong to the VFX layer.
+- `combo_first_seen` — fires exactly once per combo per session, for the §14.2
+  one-shot tip bar.
+- `enemy_damaged` — carries `rawAmount` and `absorbedByArmor` so the grey `-5`
+  chip-damage floater of the wave-3 teaching moment is drivable from one event.
+- `chain_arc` — the tesla polyline plus an `empowered` flag for the thick conduct
+  arc.
+- `tower_state_changed`, `cell_coating_changed`, `enemy_leaked`, `bridge_destroyed`.
+
+`CombatStats` (on `system.stats`) tracks damage share per combo and per tower,
+which is the GDD §20 red line ("any combo above 40% of damage gets reverted")
+measured directly rather than eyeballed.
+
+---
+
+## 7. Verification
+
+`scenarios.ts` runs combat headlessly — no renderer, no grid module, no game loop:
+
+```ts
+import { runIceShatterProbe } from '@/combat';
+const report = runIceShatterProbe();
+```
+
+The probe walks the whole GDD §7.3.1 chain and returns what happened. Current
+results, all matching the GDD:
+
+| Check | Result |
+|---|---|
+| chill layers before freezing | 3 |
+| freeze | t ≈ 1.05s |
+| shatter | t ≈ 2.53s, one 45-damage swing |
+| shatter damage | 112.5 (45 × 2.5) |
+| armour ignored | yes (hauler's 5 armour bypassed) |
+| splash | killed the bystander one cell away |
+| hitstop / tip | 60ms, `tip_shatter` |
+| chill during the grace window | blocked |
+
+The other three combos, the overload/overheat cycle, the ultimate, the
+upgrade-retunes-a-combo path and armour chip damage are all exercised the same
+way, as is the Leviathan: P1 halving, shatter ×4, a plate knocked off per
+shatter, the six sappers P2 releases, and P3's freeze immunity plus its flat
+30 HP/s self-burn. `ContentRegistry.validate()` cross-checks the tables (missing
+upgrades, unknown spawn ids, duplicate row ids) and currently reports zero
+problems.
+
+Two resolution details worth knowing, both deliberate:
+
+- Reaction rows run *before* armour and multipliers, so the shatter that knocks
+  a Leviathan plate off also benefits from it. A 45 swing into a frozen P1
+  Leviathan lands for 281 rather than 225.
+- `true` damage bypasses armour **and** damage-taken multipliers, which is what
+  keeps P3's self-burn at a flat 30/s regardless of how many plates are gone.
+
+For `R1-G1` (tests): assert against `runIceShatterProbe()` and build new probes
+out of `CombatSystem` + `OpenFieldTerrain` directly — no mocking needed, every
+external dependency is already a port with a headless default.
+
+---
+
+## 8. Known deferrals
+
+- **Waves, gates, integrity, gold.** Not combat's job. Combat emits
+  `enemy_leaked` with the integrity and gold numbers; `src/gameplay` applies them.
+- **Blackout zones.** `setTowerPowered()` is the entry point; the zone→cell
+  mapping lives in the grid module.
+- **Bridges.** The sapper emits `bridge_destroyed`; the terrain edit is gameplay's.
+- **Hero.** Out of v1 scope by GDD §4.1. Nothing here assumes its absence: a hero
+  would be an entity with a ≥40 single hit, and the shatter row would pick it up
+  with no changes — which is the point of tag-based rows.

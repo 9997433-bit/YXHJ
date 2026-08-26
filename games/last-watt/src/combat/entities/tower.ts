@@ -86,6 +86,9 @@ export class Tower {
   }
 
   overload(speedMul: number, duration: Seconds, overheat: Seconds): void {
+    // "Immediately overload" (GDD §9) means it also cuts an overheat short —
+    // otherwise the ultimate would be dead on arrival right after a capacitor.
+    this.overheatRemaining = 0;
     this.overloadRemaining = Math.max(this.overloadRemaining, duration);
     this.overloadSpeedMul = Math.max(this.overloadSpeedMul, speedMul);
     const cost = this.def.overheatImmune ? 0 : overheat;
