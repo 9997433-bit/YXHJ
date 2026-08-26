@@ -141,7 +141,10 @@ export class CommandCenter {
       this.disarm();
       return ok();
     }
-    if (!this.build.isUnlocked(defId)) return fail('rejected', '图纸尚未解锁');
+    if (!this.build.isUnlocked(defId)) {
+      const wave = this.build.unlockWaveOf(defId);
+      return fail('rejected', wave === null ? '没有这个图纸' : `图纸第 ${wave} 波解锁`);
+    }
     this.tool = 'build';
     this.buildId = defId;
     this.events?.emit('tool_armed', { tool: 'build', defId });

@@ -54,6 +54,8 @@ export interface BuildMenuItem {
   powerCost: number;
   targetsAir: boolean;
   unlocked: boolean;
+  /** Wave the blueprint unlocks on, so a locked slot can say *when* (GDD §11). */
+  unlockWave: number;
   /** Gold and supply both check out right now. */
   affordable: boolean;
   /** Missing supply points, for the §14.1 grey-out badge. */
@@ -372,6 +374,7 @@ export class GameSession {
         powerCost: def.powerCost,
         targetsAir: def.attack.targetsAir ?? false,
         unlocked: this.build.isUnlocked(def.id),
+        unlockWave: this.build.unlockWaveOf(def.id) ?? 1,
         affordable: affordableGold && affordablePower,
         powerDeficit: affordablePower
           ? 0

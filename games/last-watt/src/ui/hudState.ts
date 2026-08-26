@@ -30,6 +30,8 @@ export interface BuildItemState {
   targetsAir: boolean;
   /** 本波是否已解锁（GDD 2.2：图纸逐波解锁） */
   unlocked: boolean;
+  /** 解锁波次。未解锁时角标要写出来——只说「锁着」等于没说 */
+  unlockWave?: number;
   hotkey?: string;
 }
 

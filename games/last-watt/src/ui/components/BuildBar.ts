@@ -14,6 +14,7 @@ interface ItemNodes {
   cost: HTMLElement;
   powerBadge: HTMLElement | null;
   deficitBadge: HTMLElement;
+  lockChip: HTMLElement;
 }
 
 export class BuildBar {
@@ -49,6 +50,9 @@ export class BuildBar {
       setClass(nodes.button, 'lw-build__item--selected', state.selectedBuildId === item.id);
 
       setText(nodes.cost, String(item.cost));
+
+      nodes.lockChip.hidden = item.unlocked;
+      if (!item.unlocked) setText(nodes.lockChip, unlockLabel(item));
 
       if (powerDeficit > 0) {
         nodes.deficitBadge.hidden = false;
@@ -89,20 +93,31 @@ export class BuildBar {
     deficitBadge.hidden = true;
     button.append(deficitBadge);
 
+    // Sits above the dimmed artwork rather than replacing it: the player still
+    // needs to recognise the silhouette they are waiting for.
+    const lockChip = el('span', 'lw-build__lock', unlockLabel(item));
+    lockChip.hidden = item.unlocked;
+    button.append(lockChip);
+
     if (item.hotkey) {
       button.append(el('span', 'lw-build__hotkey', item.hotkey));
     }
 
     button.addEventListener('click', () => this.callbacks.onBuildSelect?.(item.id));
 
-    this.nodes.set(item.id, { button, cost, powerBadge, deficitBadge });
+    this.nodes.set(item.id, { button, cost, powerBadge, deficitBadge, lockChip });
     return button;
   }
 
   private tooltip(item: BuildItemState, affordable: boolean, powerDeficit: number): string {
-    if (!item.unlocked) return `${item.name}（图纸未解锁）`;
+    if (!item.unlocked) return `${item.name}：${unlockLabel(item)}解锁`;
     if (powerDeficit > 0) return `${item.name}：供电还差 ${powerDeficit} 点，造发电机或卖塔`;
     if (!affordable) return `${item.name}：金币不足`;
     return `${item.name}：${item.cost} 金${item.powerCost > 0 ? ` / 占电 ${item.powerCost}` : ''}`;
   }
+}
+
+/** 未解锁角标文案。没有波次信息时退回一把锁，不编一个波号出来。 */
+function unlockLabel(item: BuildItemState): string {
+  return item.unlockWave === undefined ? '未解锁' : `第 ${item.unlockWave} 波`;
 }

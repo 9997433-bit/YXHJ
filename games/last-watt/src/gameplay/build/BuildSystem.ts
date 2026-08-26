@@ -97,8 +97,9 @@ export class BuildSystem {
   private readonly grid: Grid;
   private readonly economy: Economy;
   private readonly events: GameplayEvents | undefined;
-  private readonly isUnlockedAt: (defId: string, wave: number) => boolean;
+  private readonly baseUnlock: (defId: string, wave: number) => boolean;
   private readonly currentWave: () => number;
+  private unlockOverride: ((defId: string, wave: number) => boolean) | null = null;
 
   private content: CombatContentView;
   private createTower: (defId: string, cell: CellCoord) => CombatTowerHandle;
@@ -115,7 +116,7 @@ export class BuildSystem {
     this.events = options.events;
     this.createTower = options.createTower ?? (() => ({ id: (this.nextSyntheticId += 1) }));
     this.removeTower = options.removeTower;
-    this.isUnlockedAt = options.isUnlocked ?? ((defId, wave) => this.unlockedByTable(defId, wave));
+    this.baseUnlock = options.isUnlocked ?? ((defId, wave) => this.unlockedByTable(defId, wave));
     this.currentWave = options.currentWave ?? (() => 1);
   }
 
@@ -202,7 +203,9 @@ export class BuildSystem {
       message: REASON_MESSAGES[reason],
     });
 
-    if (!this.isUnlockedAt(def.id, this.currentWave())) return rejectPriced('locked');
+    if (!this.isUnlockedAt(def.id, this.currentWave())) {
+      return { ...rejectPriced('locked'), message: this.lockedMessage(def.id) };
+    }
     if (this.towerAt(cx, cy)) return rejectPriced('occupied');
     if (this.grid.isOccupied(cx, cy)) return rejectPriced('occupied');
     if (this.grid.hasFlag(cx, cy, CellFlag.UnderConstruction)) return rejectPriced('under_construction');
@@ -332,6 +335,44 @@ export class BuildSystem {
   /** Blueprint availability for the build menu (GDD §14.1). */
   isUnlocked(defId: string): boolean {
     return this.isUnlockedAt(defId, this.currentWave());
+  }
+
+  /**
+   * The wave this blueprint becomes available on, so the menu can say *when*
+   * instead of only *no*. 1 for anything the table does not gate, null for a
+   * blueprint the catalogue has never heard of.
+   */
+  unlockWaveOf(defId: string): number | null {
+    try {
+      return this.content.tower(defId).ui.unlockWave ?? 1;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Swaps the unlock rule at runtime and back again.
+   *
+   * The schedule is a design decision, so the constructor option stays the way
+   * a run declares one. This exists for the dev hotkey that lifts the schedule
+   * mid-run: passing null restores whatever rule the run was built with, which
+   * a second constructor argument could not do.
+   */
+  setUnlockOverride(rule: ((defId: string, wave: number) => boolean) | null): void {
+    this.unlockOverride = rule;
+  }
+
+  get unlockOverridden(): boolean {
+    return this.unlockOverride !== null;
+  }
+
+  private isUnlockedAt(defId: string, wave: number): boolean {
+    return (this.unlockOverride ?? this.baseUnlock)(defId, wave);
+  }
+
+  private lockedMessage(defId: string): string {
+    const wave = this.unlockWaveOf(defId);
+    return wave === null ? REASON_MESSAGES.locked : `图纸第 ${wave} 波解锁`;
   }
 
   private unlockedByTable(defId: string, wave: number): boolean {

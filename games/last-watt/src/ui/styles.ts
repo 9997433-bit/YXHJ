@@ -255,7 +255,13 @@ export const HUD_CSS = `
 }
 .lw-build__item:hover:not(:disabled) { transform: translateY(-2px); border-color: ${hexToCss(COLORS.electric, 0.7)}; box-shadow: ${glow(COLORS.electric, 0.4)}; }
 .lw-build__item--selected { border-color: ${hexToCss(COLORS.electric, 1)}; box-shadow: ${glow(COLORS.electric, 0.7)}; }
-.lw-build__item--locked { opacity: 0.28; filter: grayscale(1); }
+/* 未解锁：压暗图面，但解锁波次角标保持满对比——「锁着」是状态，「第几波开」才是信息 */
+.lw-build__item--locked { border-color: rgba(138, 106, 82, 0.24); }
+.lw-build__item--locked .lw-build__icon,
+.lw-build__item--locked .lw-build__name,
+.lw-build__item--locked .lw-build__cost,
+.lw-build__item--locked .lw-build__badge,
+.lw-build__item--locked .lw-build__hotkey { opacity: 0.26; filter: grayscale(1); }
 .lw-build__item--unaffordable .lw-build__cost { color: ${hexToCss(COLORS.alert, 1)}; }
 /* 电力不足：整项灰显 + 警红缺口数（GDD 14.1） */
 .lw-build__item--nopower { filter: grayscale(0.85) brightness(0.7); }
@@ -295,6 +301,21 @@ export const HUD_CSS = `
   right: 4px;
   font-size: 9px;
   opacity: 0.45;
+}
+.lw-build__lock {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: ${hexToCss(COLORS.ice, 1)};
+  background: rgba(10, 8, 7, 0.86);
+  border: 1px solid ${hexToCss(COLORS.ice, 0.45)};
 }
 
 /* ---------------- 右下：工程 + 大招 ---------------- */
