@@ -26,6 +26,7 @@ import type { WaveTableDef } from './waves/baseWaveTable';
 import type { EnemyWaveMeta } from './waves/enemyMeta';
 import { WaveRunner } from './waves/WaveRunner';
 import { GridTerrainQuery, FlowFieldMovement } from './adapters/terrainQuery';
+import { SCOPE } from './rules/scope';
 
 export interface GameplayWorldOptions {
   map: MapDef;
@@ -35,6 +36,8 @@ export interface GameplayWorldOptions {
   engineering?: Partial<EngineeringConfig>;
   /** Lets engineering report `insufficient_gold`; the economy keeps the wallet. */
   getGold?: () => number;
+  /** 丢区 (GDD §10). Off in M1 — see `rules/scope.ts`. */
+  zoneLoss?: boolean;
   /**
    * Cost of walking through an impassable cell in the *movement* field. Finite
    * by design: a sapper can blow up the bridge under an enemy's feet, and a
@@ -55,6 +58,8 @@ export class GameplayWorld {
   readonly terrain: GridTerrainQuery;
   /** Satisfies `combat.MovementDriver` for ground units. */
   readonly movement: FlowFieldMovement;
+  /** False in M1: thresholds are warning marks, not structural losses. */
+  readonly zoneLossEnabled: boolean;
 
   private readonly blockedPenalty: number;
   private cachedField: FlowField | null = null;
@@ -64,6 +69,7 @@ export class GameplayWorld {
     this.events = options.events ?? new GameplayEvents();
     this.grid = new Grid(options.map);
     this.blockedPenalty = options.blockedPenalty ?? 1000;
+    this.zoneLossEnabled = options.zoneLoss ?? SCOPE.zoneLoss;
 
     this.engineering = new EngineeringSystem({
       grid: this.grid,
@@ -153,11 +159,27 @@ export class GameplayWorld {
     const next = this.waves.nextWave;
     if (!next) return false;
 
+    // Scripted terrain first: map 1's wave-5 breach unseals both the side route
+    // and the cell `gate_1b` spawns on, so it has to land before the gates sync
+    // and before anything reads the flow field.
+    this.openScheduledBarriers(next.wave);
     for (const gate of this.grid.syncGatesToWave(next.wave)) {
       this.events.emit('gate_opened', { gateId: gate.id, wave: next.wave });
     }
     this.engineering.applyGrantsForWave(next.wave);
     return this.waves.startWave(options);
+  }
+
+  /**
+   * Barriers with an `openAtWave` schedule (GDD §11 波 5 演出). Zone-driven
+   * sluices are not touched here — those go through `applyIntegrity`.
+   */
+  private openScheduledBarriers(wave: number): void {
+    for (const barrier of this.grid.openBarriersForWave(wave)) {
+      const cells = barrier.cells.map(({ cx, cy }) => ({ cx, cy }));
+      this.events.emit('barrier_opened', { barrierId: barrier.id, cells });
+      this.events.emit('terrain_changed', { cells, reason: 'barrier_opened' });
+    }
   }
 
   /** Drives engineering timers and the spawn schedule. */
@@ -170,14 +192,25 @@ export class GameplayWorld {
   // Hooks for systems the gameplay module does not own
   // -------------------------------------------------------------------------
 
+  /** Zones whose threshold the current integrity has reached, lost or not. */
+  breachedZones(integrity: number): ZoneState[] {
+    return this.grid.zones.filter((zone) => integrity <= zone.def.triggerIntegrity);
+  }
+
   /**
    * Called by the integrity system (GDD §10) after every change. Loses every
    * zone whose threshold has been crossed and opens the sluice attached to it.
    * Lost zones are never restored, so this is safe to call every frame.
    *
+   * With `zoneLoss` off (M1, the default — see `rules/scope.ts`) this never
+   * loses anything: integrity is a score the player watches fall, and the run
+   * ends when it reaches 0, not when it passes 80 or 50.
+   *
    * @returns zones lost by this call; the caller subtracts their power penalty.
    */
   applyIntegrity(integrity: number): ZoneState[] {
+    if (!this.zoneLossEnabled) return [];
+
     const lost: ZoneState[] = [];
     for (const zone of this.grid.zones) {
       if (!zone.powered) continue;

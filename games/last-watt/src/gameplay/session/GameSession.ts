@@ -33,7 +33,7 @@ import type { MapDef } from '../grid/mapDef';
 import type { WaveTableDef } from '../waves/baseWaveTable';
 import type { EnemyWaveMeta } from '../waves/enemyMeta';
 import type { WaveEconomyRules, WavePreviewEntry } from '../waves/waveGenerator';
-import type { EngineeringConfig } from '../engineering/EngineeringSystem';
+import type { EngineeringConfig, EngineeringHint } from '../engineering/EngineeringSystem';
 import { GameplayWorld } from '../world';
 import type { EconomyRules } from '../economy/Economy';
 import { Economy } from '../economy/Economy';
@@ -70,14 +70,32 @@ export interface SessionSnapshot {
   integrity: {
     value: number;
     max: number;
-    thresholds: { value: number; label: string; lost: boolean }[];
+    /**
+     * False in M1: the marks below warn how badly the core is doing, they are
+     * not zones about to drop out (`rules/scope.ts`).
+     */
+    lossEnabled: boolean;
+    thresholds: {
+      value: number;
+      label: string;
+      /** Integrity has reached the mark. */
+      breached: boolean;
+      /** The zone is actually gone; always false while `lossEnabled` is off. */
+      lost: boolean;
+    }[];
   };
   ultimate: { charges: number; maxCharges: number };
   engineering: {
     digLeft: number;
     bridgeLeft: number;
+    /** Price of the next use; 0 while a free tutorial charge is unspent. */
     digCost: number;
     bridgeCost: number;
+    /** Free charges left, so the HUD can label the button 「赠送」. */
+    freeDig: number;
+    freeBridge: number;
+    /** Cell an unspent tutorial charge points at, for the board highlight. */
+    recommended: EngineeringHint | null;
     armed: 'dig' | 'bridge' | null;
   };
   build: BuildMenuItem[];
@@ -102,6 +120,11 @@ export interface GameSessionOptions {
   isBlueprintUnlocked?: (defId: string, wave: number) => boolean;
   events?: GameplayEvents;
   blockedPenalty?: number;
+  /**
+   * 丢区 (GDD §10). Off in M1, where integrity only ever costs score and,
+   * at zero, the run — see `rules/scope.ts`.
+   */
+  zoneLoss?: boolean;
   /** False when the engine drives `combat.update` itself. */
   driveCombat?: boolean;
 }
@@ -137,6 +160,7 @@ export class GameSession {
       ...(options.waveEconomy ? { economy: options.waveEconomy } : {}),
       ...(options.engineering ? { engineering: options.engineering } : {}),
       ...(options.blockedPenalty !== undefined ? { blockedPenalty: options.blockedPenalty } : {}),
+      ...(options.zoneLoss !== undefined ? { zoneLoss: options.zoneLoss } : {}),
     });
 
     this.build = new BuildSystem({
@@ -170,9 +194,10 @@ export class GameSession {
     });
 
     // Engineering never touches the wallet itself (module contract); the
-    // economy pays when a job actually starts.
+    // economy pays when a job actually starts. A tutorial charge is free, and
+    // billing 0 gold would still emit a `gold_changed` the HUD would flash.
     this.events.on('engineering_started', (job) => {
-      this.economy.spend(job.cost, 'engineering');
+      if (job.cost > 0) this.economy.spend(job.cost, 'engineering');
     });
     this.events.on('run_lost', () => {
       this.runStatus = 'lost';
@@ -245,8 +270,8 @@ export class GameSession {
    * The signed-delta integrity hook (INTEGRATION.md §4.2-4). Anything outside
    * gameplay that damages or repairs the core comes through here — the assembly
    * layer bridges `combat:enemy_leaked` to it — and it settles the whole chain:
-   * the number, the `integrity_changed` event, the 80/50 substation latch and
-   * the §10 defeat check.
+   * the number, the `integrity_changed` event, the 80/50 substation latch (off
+   * in M1, see `rules/scope.ts`) and the §10 defeat check, which always runs.
    *
    * Leaks route through `CombatLink` instead, because the leak payload also
    * carries stolen gold and the Leviathan's instant loss.
@@ -309,9 +334,11 @@ export class GameSession {
       integrity: {
         value: economy.integrity.value,
         max: economy.integrity.max,
+        lossEnabled: this.world.zoneLossEnabled,
         thresholds: this.world.grid.zones.map((zone) => ({
           value: zone.def.triggerIntegrity,
           label: zone.def.label ?? zone.id,
+          breached: economy.integrity.value <= zone.def.triggerIntegrity,
           lost: !zone.powered,
         })),
       },
@@ -319,8 +346,11 @@ export class GameSession {
       engineering: {
         digLeft: this.world.engineering.digLeft,
         bridgeLeft: this.world.engineering.bridgeLeft,
-        digCost: this.world.engineering.config.digCost,
-        bridgeCost: this.world.engineering.config.bridgeCost,
+        digCost: this.world.engineering.costOf('dig'),
+        bridgeCost: this.world.engineering.costOf('bridge'),
+        freeDig: this.world.engineering.freeOf('dig'),
+        freeBridge: this.world.engineering.freeOf('bridge'),
+        recommended: this.world.engineering.recommendation,
         armed: armed === 'dig' || armed === 'bridge' ? armed : null,
       },
       build: this.buildMenu(),

@@ -64,7 +64,13 @@ export interface MapJson {
   engineering?: {
     dig_quota?: number;
     bridge_quota?: number;
-    grants?: Array<{ wave: number; type: 'dig' | 'bridge'; count?: number }>;
+    grants?: Array<{
+      wave: number;
+      type: 'dig' | 'bridge';
+      count?: number;
+      free?: boolean;
+      recommended_cell?: Cell2;
+    }>;
   };
   wave_multipliers?: {
     enemy_hp?: number;
@@ -242,6 +248,8 @@ export function importMapDefJson(json: MapJson): MapDef {
     wave: grant.wave,
     dig: grant.type === 'dig' ? (grant.count ?? 1) : 0,
     bridge: grant.type === 'bridge' ? (grant.count ?? 1) : 0,
+    free: grant.free ?? false,
+    ...(grant.recommended_cell ? { recommendedCell: toCoord(grant.recommended_cell) } : {}),
   }));
 
   const def: MapDef = {

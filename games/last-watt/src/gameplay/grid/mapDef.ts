@@ -71,6 +71,13 @@ export interface EngineeringQuotaGrant {
   wave: number;
   dig?: number;
   bridge?: number;
+  /**
+   * Tutorial charge (GDD §11, map 1 wave 5): costs no gold and does not eat a
+   * quota slot, so the player can be taught 挖沟 without being taxed for it.
+   */
+  free?: boolean;
+  /** Cell the tutorial points at while the free charge is unspent. */
+  recommendedCell?: CellCoord;
 }
 
 export interface EngineeringDef {

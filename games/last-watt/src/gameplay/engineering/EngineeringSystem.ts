@@ -10,6 +10,12 @@
  * gates that have not opened yet — must still have a route to the core. The
  * check runs against the board as it will look once all queued jobs finish, so
  * two digs that are each fine alone but fatal together are caught.
+ *
+ * A map may also schedule **free** charges (GDD §11): map 1 hands the player one
+ * at wave 5 with a recommended cell, and that one costs no gold and no quota
+ * slot. Free charges are always spent first, and `costOf`/`quotaOf` answer for
+ * the charge that is about to be used, so a button reading them shows «0 金»
+ * without knowing the tutorial exists.
  */
 
 import type { CellCoord, Seconds, TerrainName } from '../types';
@@ -76,6 +82,12 @@ export interface EngineeringJob extends CellCoord {
   resultTerrain: TerrainName;
 }
 
+/** The cell a scheduled tutorial charge points at, while it is unspent. */
+export interface EngineeringHint extends CellCoord {
+  op: EngineeringOp;
+  wave: number;
+}
+
 export interface EngineeringSystemOptions {
   grid: Grid;
   events?: GameplayEvents;
@@ -107,6 +119,9 @@ export class EngineeringSystem {
 
   private digRemaining: number;
   private bridgeRemaining: number;
+  private freeDig = 0;
+  private freeBridge = 0;
+  private hint: EngineeringHint | null = null;
 
   constructor(options: EngineeringSystemOptions) {
     this.grid = options.grid;
@@ -117,19 +132,35 @@ export class EngineeringSystem {
     this.bridgeRemaining = options.bridgeQuota ?? options.grid.def.engineering.bridgeQuota;
   }
 
+  /** Charges left, free ones included — the number on the button's 角标. */
   get digLeft(): number {
-    return this.digRemaining;
+    return this.digRemaining + this.freeDig;
   }
 
   get bridgeLeft(): number {
-    return this.bridgeRemaining;
+    return this.bridgeRemaining + this.freeBridge;
   }
 
   get activeJobs(): readonly EngineeringJob[] {
     return this.jobs;
   }
 
+  /**
+   * The recommended cell of an unspent tutorial charge, for the board
+   * highlight. Null as soon as the charge is used.
+   */
+  get recommendation(): EngineeringHint | null {
+    return this.hint;
+  }
+
+  /** Price of the *next* use of this tool: 0 while a free charge is waiting. */
   costOf(op: EngineeringOp): number {
+    if (this.freeOf(op) > 0) return 0;
+    return op === 'dig' ? this.config.digCost : this.config.bridgeCost;
+  }
+
+  /** List price, ignoring free charges. */
+  listCostOf(op: EngineeringOp): number {
     return op === 'dig' ? this.config.digCost : this.config.bridgeCost;
   }
 
@@ -138,7 +169,11 @@ export class EngineeringSystem {
   }
 
   quotaOf(op: EngineeringOp): number {
-    return op === 'dig' ? this.digRemaining : this.bridgeRemaining;
+    return op === 'dig' ? this.digLeft : this.bridgeLeft;
+  }
+
+  freeOf(op: EngineeringOp): number {
+    return op === 'dig' ? this.freeDig : this.freeBridge;
   }
 
   // -------------------------------------------------------------------------
@@ -248,8 +283,7 @@ export class EngineeringSystem {
       return check;
     }
 
-    if (op === 'dig') this.digRemaining -= 1;
-    else this.bridgeRemaining -= 1;
+    this.spendCharge(op);
 
     const job: EngineeringJob = {
       id: this.nextJobId,
@@ -339,22 +373,65 @@ export class EngineeringSystem {
     return true;
   }
 
-  /** Mid-run replenishment (GDD §5.2: map 1 hands out one extra dig at wave 15). */
-  grantQuota(dig: number, bridge: number, wave = 0): void {
+  /**
+   * Mid-run replenishment (GDD §5.2: map 1 hands out one extra dig at wave 15;
+   * §11: one *free* one at wave 5, pointed at a recommended cell).
+   */
+  grantQuota(
+    dig: number,
+    bridge: number,
+    wave = 0,
+    options: { free?: boolean; recommendedCell?: CellCoord } = {},
+  ): void {
     if (dig === 0 && bridge === 0) return;
-    this.digRemaining += dig;
-    this.bridgeRemaining += bridge;
-    this.events?.emit('engineering_quota_granted', { dig, bridge, wave });
+    const free = options.free ?? false;
+    if (free) {
+      this.freeDig += dig;
+      this.freeBridge += bridge;
+    } else {
+      this.digRemaining += dig;
+      this.bridgeRemaining += bridge;
+    }
+
+    const cell = options.recommendedCell;
+    if (cell) this.hint = { ...cell, op: dig > 0 ? 'dig' : 'bridge', wave };
+
+    this.events?.emit('engineering_quota_granted', {
+      dig,
+      bridge,
+      wave,
+      free,
+      ...(cell ? { recommendedCell: { cx: cell.cx, cy: cell.cy } } : {}),
+    });
   }
 
   applyGrantsForWave(wave: number): void {
     for (const grant of this.grid.def.engineering.grants ?? []) {
-      if (grant.wave === wave) this.grantQuota(grant.dig ?? 0, grant.bridge ?? 0, wave);
+      if (grant.wave !== wave) continue;
+      this.grantQuota(grant.dig ?? 0, grant.bridge ?? 0, wave, {
+        free: grant.free ?? false,
+        ...(grant.recommendedCell ? { recommendedCell: grant.recommendedCell } : {}),
+      });
     }
   }
 
   jobAt(cx: number, cy: number): EngineeringJob | undefined {
     return this.jobs.find((job) => job.cx === cx && job.cy === cy);
+  }
+
+  /** Free charges go first, so the tutorial grant is never left stranded. */
+  private spendCharge(op: EngineeringOp): void {
+    if (op === 'dig') {
+      if (this.freeDig > 0) this.freeDig -= 1;
+      else this.digRemaining -= 1;
+    } else if (this.freeBridge > 0) {
+      this.freeBridge -= 1;
+    } else {
+      this.bridgeRemaining -= 1;
+    }
+    // The highlight is advice for one specific charge; once it is gone, so is
+    // the advice — whether or not the player took it.
+    if (this.hint?.op === op && this.freeOf(op) === 0) this.hint = null;
   }
 
   private resultTerrainOf(op: EngineeringOp): TerrainName {

@@ -81,7 +81,17 @@ export interface GameplayEventMap {
   /** `terrain` is the canonical name (INTEGRATION.md §3.7); a dig yields `gully`, a bridge `bridge`. */
   engineering_completed: EngineeringJobPayload & { terrain: CanonicalTerrainName };
   engineering_rejected: CellCoord & { op: EngineeringOp; reason: string };
-  engineering_quota_granted: { dig: number; bridge: number; wave: number };
+  /**
+   * `free` charges cost neither gold nor a quota slot, and `recommendedCell` is
+   * the cell the tutorial wants highlighted (GDD §11 波 5 赠送挖沟).
+   */
+  engineering_quota_granted: {
+    dig: number;
+    bridge: number;
+    wave: number;
+    free: boolean;
+    recommendedCell?: CellCoord;
+  };
   bridge_destroyed: CellCoord & { byEnemy?: number };
 
   gate_opened: { gateId: string; wave: number };

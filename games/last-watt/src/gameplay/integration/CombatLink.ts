@@ -14,7 +14,8 @@
  *  2. **Leaks → integrity → 丢区.** `enemy_leaked` costs integrity and gold,
  *     then `GameplayWorld.applyIntegrity` decides whether a substation is lost;
  *     every tower in a lost zone is shut down through `setTowerPowered` and the
- *     supply cap drops (GDD §10).
+ *     supply cap drops (GDD §10). In M1 the world reports no losses at all, so
+ *     this half is dormant and integrity 0 is the only way a leak ends the run.
  *  3. **拆迁蟹 → destroyBridge.** Combat detects the sapper stepping on a
  *     player bridge and emits; gameplay owns the terrain edit and the re-route.
  *  4. **Bounties and the clear signal.** `WaveRunner` does not track live
@@ -212,7 +213,8 @@ export class CombatLink {
    * Pushes the current integrity through `GameplayWorld` and settles the
    * consequences: supply cap penalty, blackout for every tower inside the zone,
    * and the sluice the zone was holding shut. Idempotent — the world only
-   * reports a zone the first time it crosses its threshold.
+   * reports a zone the first time it crosses its threshold, and reports none at
+   * all while 丢区 is gated off.
    *
    * Takes the value, not a delta: `GameSession.applyIntegrity(delta, reason)` is
    * the hook that does the arithmetic and then calls this.

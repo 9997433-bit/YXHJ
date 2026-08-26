@@ -101,9 +101,14 @@ export {
   playerBridgeIndices,
 } from './pathing/connectivity';
 
+// --- Scope (milestone gates) -----------------------------------------------
+export type { MilestoneId, ScopeRules } from './rules/scope';
+export { CURRENT_MILESTONE, MILESTONE_SCOPE, SCOPE } from './rules/scope';
+
 // --- Engineering -----------------------------------------------------------
 export type {
   EngineeringConfig,
+  EngineeringHint,
   EngineeringJob,
   EngineeringSystemOptions,
   EngineeringWarning,
