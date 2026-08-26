@@ -3,9 +3,9 @@
 - **隔离分支**：`agent/last-watt`
 - **游戏根目录**：`games/last-watt/`（工作区根目录还会放其他游戏，禁止污染仓库根或 `docs/` 以外的共享位）
 - **设计正文**：`docs/GDD-余电.md`（v1 已锁定）
-- **视觉参考**：`docs/premium-game-visual-prompts.md`（仓库中尚不存在，Round 1 必须由 fable 视觉组按 GDD 第 15 章 + SOTA 3A/独立精品观感补齐）
-- **循环**：Round 1 / 2 / 3，每轮 10 云端子代理（4 fable + 4 opus-fast + 2 gpt-sol）
-- **当前轮次**：Round 1 — 初始构建与基线探索
+- **视觉参考**：`docs/premium-game-visual-prompts.md` + `games/last-watt/docs/VISUAL_BIBLE.md`（Round 1 已补齐）
+- **循环**：Round 1 / 2 / 3，每轮 10 子代理（4 fable + 4 opus-fast + 2 gpt-sol）；云端新 VM 并发上限 3，溢出走本地共享工作区
+- **当前轮次**：Round 2 — 靶向重构与深度优化
 - **v1 范围锁**：无战斗英雄；老周仅电台；4 combo + 双资源 + 改路 + 大招 + 丢区
 
 ## 模型映射（禁止静默降级）
@@ -45,8 +45,53 @@
 
 ### Round 1
 
-- 状态：已派发，等待 10 个云端子代理回传
-- 结论简报：待写
+- 状态：10/10 完成；云端分支 `cursor/last-watt-probes-b6bf`、`cursor/r1-f1-architecture-cc81` 已合并进 `agent/last-watt`
+
+#### Round 1 结论简报（主调度）
+
+**已实现**
+- 文档：架构 / 视觉圣经 / 系统配表 / 33 条 M1 验收
+- 引擎：Vite + Three.js WebGL2，斜俯视、锈铁网格、Bloom 只吃自发光，可 `npm run dev`
+- 玩法：20×12 网格、flow field、挖沟搭桥合法性、图 1 波次导入
+- 战斗：反应表驱动 4 combo，冰碎全链路，塔/敌/超载/Boss 阶段
+- 粒子：GPU 点精灵 + 节流 + Gym 13/13；HUD 自发光条
+- 测试：G1 mock 12/12；G2 预算 mock PASS；VFX 无头自检 13/13
+
+**遗留缺陷**
+- 四模块未串成一局可玩主循环（点格造塔→出怪→冰碎粒子）
+- 敌人 ID 三套并存（JSON / combat TS / 别名表）
+- 时钟立法冲突：架构 30Hz vs 引擎 60Hz
+- 粒子 Bloom 靠锁材质绕过引擎 mask pass；顿帧需引擎吃 `vfx.timeScale`
+- G1 测试仍打 mock，未接真实 `CombatSystem` / gameplay
+- GDD 起始 220 金 vs「恰好够 2 座」未拍板
+
+**性能瓶颈**
+- 尚无真机 1080p 60fps；仅 mock/SwiftShader。Bloom 双 pass + 2 万粒子未在参照机验证。
+
+**主调度已拍板（Round 2 必须遵守）**
+1. M1/M2 发布栈 = WebGL；Unity 不在本循环开工。
+2. 逻辑时钟 **60Hz**（与现引擎一致）；时长向上取整到 tick。
+3. 规范 ID = `games/last-watt/data/*.json`；代码只许别名指向 JSON，R2 删战斗侧私有主键。
+4. 起始金币维持 **220**；教学「两座机枪」靠高亮格，不靠掏空钱包。
+5. Round 2 第一优先级：可玩垂直切片，而不是再写平行文档。
+
+**下轮攻坚**
+- 主循环接线；统一 ID；测试改打真模块；Bloom skip 正式接口；冰碎事件→VFX；对照 ACCEPTANCE 消缺口。
+
+### Round 2 派工
+
+| ID | 模型 | 主攻 |
+|---|---|---|
+| R2-F1 | fable | 整合契约：ID 注册表、60Hz、主循环接口，写入 `docs/INTEGRATION.md` |
+| R2-F2 | fable | 对照 VISUAL_BIBLE 审计现实现，列出必须修的观感债 |
+| R2-F3 | fable | 配表与代码 ID 对齐，改 JSON/SYSTEMS 交叉引用 |
+| R2-F4 | fable | 按 ACCEPTANCE 标出现状红/黄/绿 |
+| R2-O1 | opus-fast | 主循环：engine+gameplay+combat+vfx+ui 可玩 |
+| R2-O2 | opus-fast | 玩法接战斗（占格、炸桥、完整度、第二口） |
+| R2-O3 | opus-fast | 战斗改用 JSON id；向 VFX 发事件 |
+| R2-O4 | opus-fast | 引擎 skipBloomMask；timeScale 顿帧；冰碎实接 |
+| R2-G1 | gpt-sol | 测试改打真实模块，保留 mock 作对照 |
+| R2-G2 | gpt-sol | bench 接 VfxGovernor 真计数 |
 
 #### R1-F4 回报（M1 验收清单，已交付）
 
