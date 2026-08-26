@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { DEFAULT_BUDGETS } from "./lib/budget-controller.mjs";
 import { runMockProbe } from "./lib/mock-probe.mjs";
+import { runProductionRuntimeProbe } from "./lib/production-runtime-probe.mjs";
 
 const benchDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultScenarioPath = path.join(
@@ -44,6 +45,8 @@ try {
       budgets,
       scenarioPath: path.relative(process.cwd(), options.scenarioPath),
     });
+    const productionRuntime = await runProductionRuntimeProbe();
+    attachProductionRuntime(report, productionRuntime);
     const indentation = options.compact ? 0 : 2;
     const output = `${JSON.stringify(report, null, indentation)}\n`;
 
@@ -63,6 +66,31 @@ try {
     `Last Watt VFX budget probe failed: ${error.stack ?? error.message}\n`,
   );
   process.exitCode = 2;
+}
+
+function attachProductionRuntime(report, productionRuntime) {
+  const mockPolicyVerified = report.result.budgetControllerVerified;
+  const productionRuntimeVerified = productionRuntime.status === "PASS";
+
+  report.schemaVersion = 2;
+  report.benchmark.version = "2.0.0";
+  report.benchmark.kind = "production-runtime-counters-with-deterministic-demand-model";
+  report.result.mockPolicyVerified = mockPolicyVerified;
+  report.result.productionRuntimeVerified = productionRuntimeVerified;
+  report.result.budgetControllerVerified =
+    mockPolicyVerified && productionRuntimeVerified;
+  report.result.status = report.result.budgetControllerVerified
+    ? "PASS"
+    : "FAIL";
+  report.productionRuntime = productionRuntime;
+  report.notes = [
+    "Production runtime checks load VfxBudget and GpuParticleSystem from src/vfx and read their real snapshot, estimated-alive, and exact-alive counters.",
+    "The waves 16–19 demand forecast remains deterministic; its allocation policy is retained as a model baseline and is not presented as rendered GPU output.",
+    "The production particle probe writes real Three.js buffer attributes headlessly but does not create a WebGL context or verify reference-hardware frame rate.",
+    "Node host CPU timing is diagnostic only and must not be used as proof of GTX 1060 or Steam Deck 60fps.",
+    "Event and combo burst particles are protected; environment emitters are discarded first.",
+    "Point-light requests above eight use additive billboard fallback in the demand model.",
+  ];
 }
 
 function parseArguments(argumentsList) {
@@ -122,13 +150,13 @@ function resolvePathValue(argumentsList, index, flag) {
 }
 
 function helpText() {
-  return `Last Watt particle/emitter/point-light budget probe
+  return `Last Watt production VFX counter + demand-model budget probe
 
 Usage:
   node games/last-watt/bench/run.mjs [options]
 
 Options:
-  --scenario <path>         Scenario JSON (default: waves 16–19 mock)
+  --scenario <path>         Scenario JSON (default: waves 16–19 demand model)
   --out <path>              Write the JSON report instead of stdout
   --compact                 Emit compact JSON
   --template                Print the blank JSON report template

@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedAt": null,
   "benchmark": {
     "id": "last-watt-vfx-budget-probe",
     "version": null,
-    "kind": "deterministic-node-budget-mock"
+    "kind": "production-runtime-counters-with-deterministic-demand-model"
   },
   "scenario": {
     "id": null,
@@ -32,6 +32,8 @@
   "result": {
     "status": null,
     "budgetControllerVerified": null,
+    "mockPolicyVerified": null,
+    "productionRuntimeVerified": null,
     "referenceRenderFpsVerified": false,
     "referenceRenderFpsStatus": "REQUIRES_UNITY_URP_REFERENCE_HARDWARE_CAPTURE"
   },
@@ -87,6 +89,32 @@
     "maxFrameMs": null,
     "targetFrameMs": 16.667,
     "p95WithinTarget": null,
+    "authoritativeForRenderFps": false
+  },
+  "productionRuntime": {
+    "status": null,
+    "kind": "production-typescript-headless-counters",
+    "loadedModules": {
+      "governor": "src/vfx/budget.ts#VfxBudget",
+      "particleSystem": "src/vfx/GpuParticleSystem.ts#GpuParticleSystem",
+      "publicApi": "src/vfx/index.ts",
+      "loader": "vite-ssr"
+    },
+    "counterSources": {
+      "governor": "VfxBudget.snapshot",
+      "particleEstimate": "GpuParticleSystem.stats.alive",
+      "particleExact": "GpuParticleSystem.countAliveExact()"
+    },
+    "productionBudgets": {
+      "activeEmitters": 64,
+      "loopingEmitters": 24,
+      "burstEmitters": 40,
+      "gpuParticles": 20000,
+      "dynamicPointLights": 8
+    },
+    "checks": [],
+    "observations": {},
+    "renderedFrames": false,
     "authoritativeForRenderFps": false
   },
   "waves": [],

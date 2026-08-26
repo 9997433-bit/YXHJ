@@ -1,6 +1,11 @@
 # Last Watt VFX budget probe
 
-纯 Node、零依赖的预算治理探针。它以 60Hz 确定性推进波 16–19，模拟持续状态、攻击 burst、3 个同帧火场、12 座塔过载和全场大招，检查粒子、发射器与动态点光的运行时裁剪策略。
+无头预算治理探针。它包含两个互补部分：
+
+1. 以 60Hz 确定性推进波 16–19 的需求模型，覆盖持续状态、攻击 burst、3 个同帧火场、12 座塔过载和全场大招。
+2. 通过 Vite SSR 直接加载生产 `src/vfx/budget.ts#VfxBudget` 与 `src/vfx/GpuParticleSystem.ts#GpuParticleSystem`，把粒子写入真实 Three.js 环形池，并读取 `VfxBudget.snapshot`、`GpuParticleSystem.stats.alive` 和 `countAliveExact()`。
+
+因此 JSON 中 `productionRuntime` 是真实生产计数器的无头契约验证；`peaks` / `waves` 是大潮需求与裁剪模型，两者不会混称为 GPU 渲染结果。
 
 ## 入口
 
@@ -33,4 +38,4 @@ node games/last-watt/bench/run.mjs --template
 
 同类循环发射器超过 10 个时粒子率减半；预算压力下先丢环境氛围，再降低非保护循环粒子率。第 9 盏起的点光转换为加法面片 fallback。
 
-报告中的 `hostCpuDiagnostic` 只衡量 Node 预算控制器，不做 GPU 渲染。GDD 的 1080p/60fps（16.67ms）最终红线仍必须在 Unity URP、GTX 1060 / Steam Deck 级参照机上采集；本探针不会把 mock 的 Node 帧时冒充真实渲染帧时。
+报告中的 `productionRuntime.renderedFrames` 固定为 `false`：真实粒子池会创建材质、几何和属性缓冲并执行发射/回收，但不会创建 WebGL context。`hostCpuDiagnostic` 也只衡量 Node 需求模型。1080p/60fps（16.67ms）最终红线仍必须在 WebGL 参照机（GTX 1060 / Steam Deck 级）采集；本探针不会把 Node 帧时冒充真实渲染帧时。
