@@ -40,7 +40,7 @@ hud.update(session.snapshot());
 import { createGameplayWorld, MAP1_POWERHOUSE } from '@/gameplay';
 
 const world = createGameplayWorld({ map: MAP1_POWERHOUSE, getGold: () => wallet.gold });
-world.events.on('wave_spawn', (request) => combat.spawn(request));
+world.events.on('wave_spawn', (request) => myOwnSpawner(request));
 world.startWave({ early: false });
 world.tick(1 / 60);
 ```
