@@ -173,8 +173,8 @@ function exerciseProductionRuntime({
 
     // Profile the M1 acceptance collision through the real VfxSystem: eight
     // cold-mist loops are warmed, then six complete ice shatters fire in one
-    // frame. Each shatter currently emits 40 particles across four requests
-    // (24 shards + core + ring + 14 frost), plus one frost decal.
+    // frame. Each shatter currently emits 40 particles across six requests
+    // (three shard tiles + core + ring + frost), plus one frost decal.
     const shatterProfile = exerciseSameFrameShatters(VfxSystem);
     observations.wave10SameFrameShatters = shatterProfile;
     addCheck(
@@ -189,13 +189,13 @@ function exerciseProductionRuntime({
       },
       {
         loopEmitters: 8,
-        oneShotEmitters: 24,
+        oneShotEmitters: 36,
         emittedParticles: 240,
         exactParticleDelta: 240,
         decals: 6,
       },
       shatterProfile.snapshot.loopEmitters === 8 &&
-        shatterProfile.snapshot.oneShotEmitters === 24 &&
+        shatterProfile.snapshot.oneShotEmitters === 36 &&
         shatterProfile.shatterParticlesEmitted === 240 &&
         shatterProfile.exactParticleDelta === 240 &&
         shatterProfile.decals === 6,
