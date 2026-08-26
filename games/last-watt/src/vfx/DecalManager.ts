@@ -6,7 +6,7 @@ import {
   buildDecalAtlas,
 } from './atlas';
 import { VFX_BUDGET } from './budget';
-import { protectMaterialFromMaskSwap } from './bloomMaskCompat';
+import { skipBloomMask } from '../engine/postfx/bloomMask';
 import type { RGBA } from './palette';
 
 /**
@@ -148,7 +148,10 @@ export class DecalManager {
     });
 
     this.mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
-    protectMaterialFromMaskSwap(this.mesh);
+    // Per-instance timing and atlas lookup live in this shader; a mask-pass
+    // proxy material would draw 64 opaque squares instead. `uCull` culls the
+    // whole layer during the mask pass, see `setMaskPass`.
+    skipBloomMask(this.mesh);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 5;
     this.mesh.name = 'lw-vfx-decals';

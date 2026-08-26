@@ -12,6 +12,8 @@ import {
   SpriteMaterial,
 } from 'three';
 
+import { getBloomMaskPolicy } from './bloomMask';
+
 type Maskable = Object3D & { material: Material | Material[] };
 
 type ProxyKind = 'mesh' | 'points' | 'sprite' | 'line';
@@ -57,29 +59,22 @@ function kindOf(object: Maskable): ProxyKind {
  * every material is temporarily swapped for an unlit proxy tinted by its
  * emissive channel (everything else goes black), the bloom chain consumes that
  * buffer, and the originals are restored before the beauty pass runs.
+ *
+ * Objects whose look lives in their own shader opt out through
+ * `setBloomMaskPolicy` (see `bloomMask.ts`).
  */
 export class EmissiveMask {
   private readonly proxies = new WeakMap<Material, Partial<Record<ProxyKind, Material>>>();
   private readonly created = new Set<Material>();
   private readonly saved: SavedMaterial[] = [];
+  private readonly hidden: Object3D[] = [];
   private swapped = false;
 
   /** Swap every material in the scene for its emissive proxy. */
   apply(scene: Scene): void {
     if (this.swapped) return;
     this.swapped = true;
-
-    scene.traverse((object) => {
-      if (!(object as Partial<Maskable>).material) return;
-
-      const maskable = object as Maskable;
-      this.saved.push({ object: maskable, material: maskable.material });
-
-      const kind = kindOf(maskable);
-      maskable.material = Array.isArray(maskable.material)
-        ? maskable.material.map((entry) => this.proxyFor(kind, entry))
-        : this.proxyFor(kind, maskable.material);
-    });
+    this.walk(scene);
   }
 
   /** Put the real materials back. Safe to call when nothing was swapped. */
@@ -90,7 +85,39 @@ export class EmissiveMask {
       entry.object.material = entry.material;
     }
     this.saved.length = 0;
+
+    for (const object of this.hidden) object.visible = true;
+    this.hidden.length = 0;
+
     this.swapped = false;
+  }
+
+  /**
+   * Manual recursion rather than `Scene.traverse` so a hidden policy can prune
+   * the whole subtree: an object nobody renders has nothing to swap.
+   */
+  private walk(object: Object3D): void {
+    const policy = getBloomMaskPolicy(object);
+
+    if (policy?.hidden) {
+      if (object.visible) {
+        object.visible = false;
+        this.hidden.push(object);
+      }
+      return;
+    }
+
+    if (!policy?.skipMaterialSwap && (object as Partial<Maskable>).material) {
+      const maskable = object as Maskable;
+      this.saved.push({ object: maskable, material: maskable.material });
+
+      const kind = kindOf(maskable);
+      maskable.material = Array.isArray(maskable.material)
+        ? maskable.material.map((entry) => this.proxyFor(kind, entry))
+        : this.proxyFor(kind, maskable.material);
+    }
+
+    for (const child of object.children) this.walk(child);
   }
 
   dispose(): void {

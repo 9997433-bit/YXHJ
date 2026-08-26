@@ -6,7 +6,7 @@ import {
   buildParticleAtlas,
 } from './atlas';
 import { PARTICLE_FRAGMENT_SHADER, PARTICLE_VERTEX_SHADER } from './shaders';
-import { protectMaterialFromMaskSwap } from './bloomMaskCompat';
+import { skipBloomMask } from '../engine/postfx/bloomMask';
 import type { RGBA } from './palette';
 
 /**
@@ -184,7 +184,10 @@ class ParticleLayer {
     this.geometry = geometry;
     this.attrs = attrs;
     this.points = new THREE.Points(geometry, this.material);
-    protectMaterialFromMaskSwap(this.points);
+    // The motion is an analytic solve in our vertex shader; a proxy material
+    // would snap every particle back to its spawn point in the bloom buffer.
+    // Which layer reaches bloom is decided by `uCull`, see `setMaskPass`.
+    skipBloomMask(this.points);
     this.points.frustumCulled = false;
     // 粒子画在血条之下、地面之上（GDD 15.2 防糊规则 ②）
     this.points.renderOrder = 10;

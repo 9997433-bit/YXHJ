@@ -6,6 +6,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 import { BLOOM } from '../config';
+import { Signal } from '../core/Signal';
 import { EmissiveMask } from './EmissiveMask';
 
 const MASK_BACKGROUND = new Color(0x000000);
@@ -49,6 +50,14 @@ const COMPOSITE_SHADER = {
  */
 export class PostPipeline {
   enabled = true;
+
+  /**
+   * Fires `true` right before the emissive mask is rendered and `false` once
+   * the beauty pass owns the scene again. Systems that draw with their own
+   * shaders (the VFX layer) subscribe to cull the layers that are lit rather
+   * than emissive, which is the part `EmissiveMask` cannot decide for them.
+   */
+  readonly onMaskPass = new Signal<boolean>();
 
   private readonly renderer: WebGLRenderer;
   private readonly scene: Scene;
@@ -120,16 +129,24 @@ export class PostPipeline {
     // from distant emissives, so the bloom input is rendered unfogged.
     this.scene.background = MASK_BACKGROUND;
     this.scene.fog = null;
-    this.mask.apply(this.scene);
-    this.bloomComposer.render();
-    this.mask.revert();
-    this.scene.fog = fog;
-    this.scene.background = background;
+    try {
+      this.onMaskPass.emit(true);
+      this.mask.apply(this.scene);
+      this.bloomComposer.render();
+    } finally {
+      // A throwing bloom pass must not leave the scene stuck in mask state:
+      // that would paint the beauty pass with proxy materials next frame.
+      this.mask.revert();
+      this.onMaskPass.emit(false);
+      this.scene.fog = fog;
+      this.scene.background = background;
+    }
 
     this.finalComposer.render();
   }
 
   dispose(): void {
+    this.onMaskPass.clear();
     this.mask.dispose();
     this.bloomPass.dispose();
     this.compositePass.dispose();
